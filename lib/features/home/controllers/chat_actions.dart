@@ -12,6 +12,7 @@ import '../../../core/services/chat/chat_service.dart';
 import '../../../utils/assistant_regex.dart';
 import '../../../core/models/assistant_regex.dart';
 import '../../../utils/markdown_media_sanitizer.dart';
+import '../services/ask_user_interaction_service.dart';
 import '../services/message_generation_service.dart';
 import '../services/tool_approval_service.dart';
 import 'chat_controller.dart';
@@ -95,6 +96,9 @@ class ChatActions {
   /// Called when summary may need to be generated (every N messages).
   void Function(String conversationId)? onMaybeGenerateSummary;
 
+  /// Called when chat suggestions may need to be generated.
+  void Function(String conversationId)? onMaybeGenerateSuggestions;
+
   /// Called to schedule inline image sanitization.
   void Function(String messageId, String content, {bool immediate})?
   onScheduleImageSanitize;
@@ -138,6 +142,93 @@ class ChatActions {
     return messageGenerationService.isReasoningEnabled(budget);
   }
 
+  Conversation _conversationForMessageContext(
+    Conversation conversation,
+    List<ChatMessage> messages, {
+    int? maxRawTruncateIndex,
+  }) {
+    final completeConversation = chatController
+        .conversationForCompleteHistoryContext(conversation);
+    return conversationForMessageContext(
+      conversation: completeConversation,
+      messages: messages,
+      maxRawTruncateIndex: maxRawTruncateIndex,
+    );
+  }
+
+  @visibleForTesting
+  static Conversation conversationForMessageContext({
+    required Conversation conversation,
+    required List<ChatMessage> messages,
+    int? maxRawTruncateIndex,
+  }) {
+    final rawTruncateIndex = conversation.truncateIndex;
+    if (maxRawTruncateIndex != null && rawTruncateIndex > maxRawTruncateIndex) {
+      return conversation.copyWith(truncateIndex: -1);
+    }
+    if (rawTruncateIndex < 0 || rawTruncateIndex <= messages.length) {
+      return conversation;
+    }
+    return conversation.copyWith(truncateIndex: -1);
+  }
+
+  @visibleForTesting
+  static StreamSubscription<T> listenSequentiallyToStream<T>({
+    required Stream<T> stream,
+    required Future<void> Function(T chunk) onData,
+    required Future<void> Function(Object error, StackTrace stackTrace) onError,
+    required Future<void> Function() onDone,
+  }) {
+    late final StreamSubscription<T> subscription;
+    var terminalStarted = false;
+
+    Future<void> handleError(Object error, StackTrace stackTrace) async {
+      if (terminalStarted) return;
+      terminalStarted = true;
+      try {
+        await onError(error, stackTrace);
+      } finally {
+        await subscription.cancel();
+      }
+    }
+
+    Future<void> handleDone() async {
+      if (terminalStarted) return;
+      terminalStarted = true;
+      try {
+        await onDone();
+      } catch (error, stackTrace) {
+        terminalStarted = false;
+        await handleError(error, stackTrace);
+      }
+    }
+
+    subscription = stream.listen(
+      (chunk) {
+        if (terminalStarted) return;
+        subscription.pause();
+        Future<void>.sync(() => onData(chunk)).then(
+          (_) {
+            if (!terminalStarted) {
+              subscription.resume();
+            }
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            unawaited(handleError(error, stackTrace));
+          },
+        );
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        unawaited(handleError(error, stackTrace));
+      },
+      onDone: () {
+        unawaited(handleDone());
+      },
+      cancelOnError: true,
+    );
+    return subscription;
+  }
+
   bool _supportsAudioAttachmentsForProvider(
     SettingsProvider settings, {
     required String providerKey,
@@ -157,6 +248,7 @@ class ChatActions {
     required String providerKey,
     required String modelId,
     ChatInputData? pendingInput,
+    int? maxRawTruncateIndex,
   }) {
     if (_supportsAudioAttachmentsForProvider(
       settings,
@@ -175,7 +267,11 @@ class ChatActions {
         .buildApiMessages(
           messages: messages,
           versionSelections: _versionSelections,
-          currentConversation: conversation,
+          currentConversation: _conversationForMessageContext(
+            conversation,
+            messages,
+            maxRawTruncateIndex: maxRawTruncateIndex,
+          ),
         );
     return messageGenerationService.apiMessagesContainAudioAttachments(
       apiMessages,
@@ -272,8 +368,12 @@ class ChatActions {
     final assistantId = assistant?.id;
     // Capture approval service reference before async gap
     ToolApprovalService? approvalService;
+    AskUserInteractionService? askUserService;
     try {
       approvalService = contextProvider.read<ToolApprovalService>();
+    } catch (_) {}
+    try {
+      askUserService = contextProvider.read<AskUserInteractionService>();
     } catch (_) {}
     final modelConfig = messageGenerationService.getModelConfig(
       settings,
@@ -286,13 +386,23 @@ class ChatActions {
     final providerKey = modelConfig.providerKey!;
     final modelId = modelConfig.modelId!;
 
+    if (chatController.hasMoreAfter) {
+      final loaded = chatController.loadEndWindow();
+      if (loaded) {
+        viewModel.restoreMessageUiState();
+      }
+    }
+
+    final existingContextMessages = chatController
+        .messagesForCompleteHistoryContext(conversation);
     if (_hasUnsupportedAudioAttachments(
-      messages: _messages,
+      messages: existingContextMessages,
       conversation: conversation,
       settings: settings,
       providerKey: providerKey,
       modelId: modelId,
       pendingInput: input,
+      maxRawTruncateIndex: null,
     )) {
       return ChatActionResult.error('audio_attachment_unsupported');
     }
@@ -303,7 +413,9 @@ class ChatActions {
       input: input,
       assistant: assistant,
     );
-    _messages.add(userMessage);
+    if (chatController.appendPersistedTailMessage(userMessage)) {
+      viewModel.restoreMessageUiState();
+    }
     onMessagesChanged?.call();
 
     _setConversationLoading(conversation.id, true);
@@ -320,7 +432,9 @@ class ChatActions {
     // so that MessageListView can detect it's streaming on first render
     streamController.markStreamingStarted(assistantMessage.id);
 
-    _messages.add(assistantMessage);
+    if (chatController.appendPersistedTailMessage(assistantMessage)) {
+      viewModel.restoreMessageUiState();
+    }
     onMessagesChanged?.call();
 
     // Reset tool parts and initialize reasoning
@@ -341,17 +455,23 @@ class ChatActions {
     messageGenerationService.onFileProcessingFinished =
         onFileProcessingFinished;
     try {
+      final apiContextMessages = chatController
+          .messagesForCompleteHistoryContext(conversation);
       final prepared = await messageGenerationService
           .prepareApiMessagesWithInjections(
-            messages: _messages,
+            messages: apiContextMessages,
             versionSelections: _versionSelections,
-            currentConversation: conversation,
+            currentConversation: _conversationForMessageContext(
+              conversation,
+              apiContextMessages,
+            ),
             settings: settings,
             assistant: assistant,
             assistantId: assistantId,
             providerKey: providerKey,
             modelId: modelId,
             approvalService: approvalService,
+            askUserService: askUserService,
           );
 
       // Build user image paths
@@ -368,6 +488,7 @@ class ChatActions {
         assistantMessage: assistantMessage,
         prepared: prepared,
         userImagePaths: userImagePaths,
+        allowImagesApiRouting: input.allowImagesApiRouting,
         providerKey: providerKey,
         modelId: modelId,
         assistant: assistant,
@@ -401,6 +522,7 @@ class ChatActions {
     required ChatMessage message,
     required Conversation conversation,
     bool assistantAsNewReply = false,
+    bool allowImagesApiRouting = true,
   }) async {
     // Avoid using BuildContext across async gaps (this class holds a BuildContext).
     final settings = contextProvider.read<SettingsProvider>();
@@ -409,13 +531,20 @@ class ChatActions {
         .currentAssistant;
     // Capture approval service reference before async gap
     ToolApprovalService? regenApprovalService;
+    AskUserInteractionService? regenAskUserService;
     try {
       regenApprovalService = contextProvider.read<ToolApprovalService>();
+    } catch (_) {}
+    try {
+      regenAskUserService = contextProvider.read<AskUserInteractionService>();
     } catch (_) {}
 
     await cancelStreaming(conversation);
 
-    final idx = _messages.indexWhere((m) => m.id == message.id);
+    final completeMessages = chatController.messagesForCompleteHistoryContext(
+      conversation,
+    );
+    final idx = completeMessages.indexWhere((m) => m.id == message.id);
     if (idx < 0) {
       return ChatActionResult.error('message_not_found');
     }
@@ -423,7 +552,7 @@ class ChatActions {
     // Calculate versioning using service
     final versioning = messageGenerationService.calculateRegenerationVersioning(
       message: message,
-      messages: _messages,
+      messages: completeMessages,
       assistantAsNewReply: assistantAsNewReply,
     );
     if (versioning.lastKeep < 0) {
@@ -444,7 +573,7 @@ class ChatActions {
     final modelId = modelConfig.modelId!;
 
     final projectedMessages = ChatActions.projectMessagesForRegenerationContext(
-      messages: _messages,
+      messages: completeMessages,
       lastKeep: versioning.lastKeep,
       targetGroupId: versioning.targetGroupId,
     );
@@ -454,8 +583,22 @@ class ChatActions {
       settings: settings,
       providerKey: providerKey,
       modelId: modelId,
+      maxRawTruncateIndex: versioning.lastKeep,
     )) {
       return ChatActionResult.error('audio_attachment_unsupported');
+    }
+
+    if (settings.regenerateDeleteTrailingMessages) {
+      final removeIds = await messageGenerationService.removeTrailingMessages(
+        messages: completeMessages,
+        lastKeep: versioning.lastKeep,
+        targetGroupId: versioning.targetGroupId,
+      );
+      if (removeIds.isNotEmpty) {
+        chatController.reloadMessages();
+        viewModel.restoreMessageUiState();
+        onMessagesChanged?.call();
+      }
     }
 
     // Create assistant message placeholder (new version)
@@ -482,13 +625,15 @@ class ChatActions {
     );
 
     final regenerationMessages = ChatActions.buildRegenerationMessages(
-      messages: _messages,
+      messages: completeMessages,
       lastKeep: versioning.lastKeep,
       targetGroupId: versioning.targetGroupId,
       assistantPlaceholder: assistantMessage,
     );
 
-    _messages.add(assistantMessage);
+    if (chatController.appendPersistedTailMessage(assistantMessage)) {
+      viewModel.restoreMessageUiState();
+    }
     onMessagesChanged?.call();
 
     _setConversationLoading(conversation.id, true);
@@ -510,13 +655,18 @@ class ChatActions {
         .prepareApiMessagesWithInjections(
           messages: regenerationMessages,
           versionSelections: _versionSelections,
-          currentConversation: conversation,
+          currentConversation: _conversationForMessageContext(
+            conversation,
+            regenerationMessages,
+            maxRawTruncateIndex: versioning.lastKeep,
+          ),
           settings: settings,
           assistant: assistant,
           assistantId: assistantId,
           providerKey: providerKey,
           modelId: modelId,
           approvalService: regenApprovalService,
+          askUserService: regenAskUserService,
         );
 
     // Build user image paths
@@ -533,6 +683,7 @@ class ChatActions {
       assistantMessage: assistantMessage,
       prepared: prepared,
       userImagePaths: userImagePaths,
+      allowImagesApiRouting: allowImagesApiRouting,
       providerKey: providerKey,
       modelId: modelId,
       assistant: assistant,
@@ -544,6 +695,118 @@ class ChatActions {
 
     await _executeGeneration(ctx);
     return ChatActionResult.success(assistantMessage);
+  }
+
+  Future<ChatActionResult> continueAssistantMessageAfterToolAnswer({
+    required ChatMessage message,
+    required Conversation conversation,
+    bool allowImagesApiRouting = true,
+  }) async {
+    final settings = contextProvider.read<SettingsProvider>();
+    final assistant = contextProvider
+        .read<AssistantProvider>()
+        .currentAssistant;
+    ToolApprovalService? approvalService;
+    AskUserInteractionService? askUserService;
+    try {
+      approvalService = contextProvider.read<ToolApprovalService>();
+    } catch (_) {}
+    try {
+      askUserService = contextProvider.read<AskUserInteractionService>();
+    } catch (_) {}
+
+    final visibleIndex = _messages.indexWhere(
+      (candidate) => candidate.id == message.id,
+    );
+    if (visibleIndex < 0 || message.role != 'assistant') {
+      return ChatActionResult.error('message_not_found');
+    }
+    final completeMessages = chatController.messagesForCompleteHistoryContext(
+      conversation,
+    );
+    final contextIndex = completeMessages.indexWhere(
+      (candidate) => candidate.id == message.id,
+    );
+    if (contextIndex < 0) {
+      return ChatActionResult.error('message_not_found');
+    }
+
+    final modelConfig = messageGenerationService.getModelConfig(
+      settings,
+      assistant,
+    );
+    if (modelConfig.providerKey == null || modelConfig.modelId == null) {
+      return ChatActionResult.noModel();
+    }
+    final providerKey = modelConfig.providerKey!;
+    final modelId = modelConfig.modelId!;
+
+    final streamingMessage = _messages[visibleIndex].copyWith(
+      isStreaming: true,
+    );
+    _messages[visibleIndex] = streamingMessage;
+    await chatService.updateMessage(streamingMessage.id, isStreaming: true);
+    onMessagesChanged?.call();
+    _setConversationLoading(conversation.id, true);
+
+    final supportsReasoning = _isReasoningModel(providerKey, modelId);
+    final enableReasoning =
+        supportsReasoning &&
+        _isReasoningEnabled(
+          assistant?.thinkingBudget ?? settings.thinkingBudget,
+        );
+
+    try {
+      final apiContextMessages = List<ChatMessage>.of(completeMessages);
+      apiContextMessages[contextIndex] = streamingMessage.copyWith(content: '');
+      final prepared = await messageGenerationService
+          .prepareApiMessagesWithInjections(
+            messages: apiContextMessages,
+            versionSelections: _versionSelections,
+            currentConversation: _conversationForMessageContext(
+              conversation,
+              apiContextMessages,
+            ),
+            settings: settings,
+            assistant: assistant,
+            assistantId: assistant?.id,
+            providerKey: providerKey,
+            modelId: modelId,
+            approvalService: approvalService,
+            askUserService: askUserService,
+          );
+
+      final userImagePaths = messageGenerationService.buildUserImagePaths(
+        input: null,
+        lastUserImagePaths: prepared.lastUserImagePaths,
+        settings: settings,
+        providerKey: providerKey,
+        modelId: modelId,
+      );
+
+      final ctx = messageGenerationService.buildGenerationContext(
+        assistantMessage: streamingMessage,
+        prepared: prepared,
+        userImagePaths: userImagePaths,
+        allowImagesApiRouting: allowImagesApiRouting,
+        providerKey: providerKey,
+        modelId: modelId,
+        assistant: assistant,
+        settings: settings,
+        supportsReasoning: supportsReasoning,
+        enableReasoning: enableReasoning,
+        generateTitleOnFinish: false,
+      );
+
+      await _executeGeneration(ctx);
+      return ChatActionResult.success(streamingMessage);
+    } catch (e) {
+      streamController.markStreamingEnded(streamingMessage.id);
+      _messages[visibleIndex] = streamingMessage.copyWith(isStreaming: false);
+      await chatService.updateMessage(streamingMessage.id, isStreaming: false);
+      _setConversationLoading(conversation.id, false);
+      return ChatActionResult.error(e.toString());
+    }
   }
 
   // ============================================================================
@@ -560,6 +823,11 @@ class ChatActions {
       contextProvider.read<ToolApprovalService>().cancelAll();
     } catch (_) {
       // ToolApprovalService may not be registered yet
+    }
+    try {
+      contextProvider.read<AskUserInteractionService>().cancelAll();
+    } catch (_) {
+      // AskUserInteractionService may not be registered yet
     }
 
     // Reset file processing state on cancel
@@ -582,19 +850,24 @@ class ChatActions {
     if (streaming != null) {
       // Mark streaming as ended to allow UI rebuilds again
       streamController.markStreamingEnded(streaming.id);
-
-      await chatService.updateMessage(
-        streaming.id,
-        content: streaming.content,
-        isStreaming: false,
-        totalTokens: streaming.totalTokens,
-      );
+      streamController.cleanupTimers(streaming.id);
 
       final idx = _messages.indexWhere((m) => m.id == streaming!.id);
+      final latestStreaming = idx == -1 ? streaming : _messages[idx];
+
+      await chatService.updateMessage(
+        latestStreaming.id,
+        content: latestStreaming.content,
+        isStreaming: false,
+        totalTokens: latestStreaming.totalTokens,
+      );
+
       if (idx != -1) {
-        _messages[idx] = _messages[idx].copyWith(isStreaming: false);
+        _messages[idx] = latestStreaming.copyWith(isStreaming: false);
         onMessagesChanged?.call();
       }
+
+      streamController.removeStreamingNotifier(streaming.id);
       _setConversationLoading(cid, false);
 
       // Use unified reasoning completion method
@@ -619,7 +892,7 @@ class ChatActions {
       // If streaming output included inline base64 images, sanitize them even on manual cancel
       onScheduleImageSanitize?.call(
         streaming.id,
-        streaming.content,
+        latestStreaming.content,
         immediate: true,
       );
     } else {
@@ -636,6 +909,15 @@ class ChatActions {
     final state = stream_ctrl.StreamingState(ctx);
     final assistant = ctx.assistant;
     final conversationId = state.conversationId;
+    final existingSplit = streamController.getContentSplitData(state.messageId);
+    if (existingSplit != null) {
+      state.contentSplitOffsets = List<int>.of(existingSplit.offsets);
+      state.reasoningCountAtSplit = List<int>.of(existingSplit.reasoningCounts);
+      state.toolCountAtSplit = List<int>.of(existingSplit.toolCounts);
+    }
+    if (streamController.getToolPartsCount(state.messageId) > 0) {
+      state.hadThinkingBlock = true;
+    }
 
     // Mark this message as actively streaming to suppress UI rebuilds
     streamController.markStreamingStarted(state.messageId);
@@ -657,24 +939,15 @@ class ChatActions {
         extraBody: ctx.extraBody,
         stream: ctx.streamOutput,
         requestId: conversationId,
+        allowImagesApiRouting: ctx.allowImagesApiRouting,
       );
 
       await _conversationStreams[conversationId]?.cancel();
-      // Use a StreamSubscription that processes chunks sequentially.
-      // With the default listen() + async callback, Dart does NOT await the
-      // returned Future, so multiple chunks interleave at await points. This
-      // causes later-resuming handlers to overwrite final content with stale
-      // partial snapshots. By pausing/resuming the subscription around each
-      // async handler, we ensure serial processing.
-      late final StreamSubscription<ChatStreamChunk> sub;
-      sub = stream.listen(
-        (chunk) {
-          sub.pause();
-          _handleStreamChunk(chunk, state).whenComplete(() => sub.resume());
-        },
-        onError: (e) => _handleStreamError(e, state),
+      final sub = listenSequentiallyToStream<ChatStreamChunk>(
+        stream: stream,
+        onData: (chunk) => _handleStreamChunk(chunk, state),
+        onError: (error, stackTrace) => _handleStreamError(error, state),
         onDone: () => _handleStreamDone(state),
-        cancelOnError: true,
       );
       _conversationStreams[conversationId] = sub;
     } catch (e) {
@@ -786,6 +1059,7 @@ class ChatActions {
             required String name,
             required Map<String, dynamic> arguments,
             String? content,
+            Map<String, dynamic>? metadata,
           }) async {
             await chatService.upsertToolEvent(
               messageId,
@@ -793,6 +1067,7 @@ class ChatActions {
               name: name,
               arguments: arguments,
               content: content,
+              metadata: metadata,
             );
           },
     );
@@ -1160,6 +1435,9 @@ class ChatActions {
 
     // Trigger summary generation check (actual logic in HomeViewModel)
     onMaybeGenerateSummary?.call(conversationId);
+
+    // Trigger follow-up suggestions after the final assistant reply is stored.
+    onMaybeGenerateSuggestions?.call(conversationId);
   }
 
   /// Handle stream error.

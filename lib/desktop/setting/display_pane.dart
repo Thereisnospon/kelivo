@@ -74,6 +74,8 @@ class _DisplaySettingsBody extends StatelessWidget {
                   _RowDivider(),
                   _ToggleRowShowModelTimestamp(),
                   _RowDivider(),
+                  _ToggleRowShowProviderInChatMessage(),
+                  _RowDivider(),
                   _ToggleRowShowTokenStats(),
                 ],
               ),
@@ -106,9 +108,13 @@ class _DisplaySettingsBody extends StatelessWidget {
                   _RowDivider(),
                   _ToggleRowShowToolResultSummary(),
                   _RowDivider(),
-                  _ToggleRowShowUpdates(),
+                  _ToggleRowInsertSuggestionOnly(),
                   _RowDivider(),
-                  _ToggleRowMsgNavButtons(),
+                  _ToggleRowRegenerateDeleteTrailingMessages(),
+                  _RowDivider(),
+                  _ToggleRowShowRegenerateConfirmDialog(),
+                  _RowDivider(),
+                  _ToggleRowShowUpdates(),
                   _RowDivider(),
                   _ToggleRowShowChatListDate(),
                   _RowDivider(),
@@ -117,6 +123,8 @@ class _DisplaySettingsBody extends StatelessWidget {
                   _ToggleRowNewChatAfterDelete(),
                   _RowDivider(),
                   _ToggleRowNewChatOnLaunch(),
+                  _RowDivider(),
+                  _ToggleRowMsgNavButtons(),
                   _RowDivider(),
                   _SendShortcutRow(),
                 ],
@@ -2022,6 +2030,21 @@ class _ToggleRowShowModelTimestamp extends StatelessWidget {
   }
 }
 
+class _ToggleRowShowProviderInChatMessage extends StatelessWidget {
+  const _ToggleRowShowProviderInChatMessage();
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final sp = context.watch<SettingsProvider>();
+    return _ToggleRow(
+      label: l10n.displaySettingsPageShowProviderInChatMessageTitle,
+      value: sp.showProviderInChatMessage,
+      onChanged: (v) =>
+          context.read<SettingsProvider>().setShowProviderInChatMessage(v),
+    );
+  }
+}
+
 class _ToggleRowShowTokenStats extends StatelessWidget {
   const _ToggleRowShowTokenStats();
   @override
@@ -2182,6 +2205,52 @@ class _ToggleRowShowToolResultSummary extends StatelessWidget {
       value: sp.showToolResultSummary,
       onChanged: (v) =>
           context.read<SettingsProvider>().setShowToolResultSummary(v),
+    );
+  }
+}
+
+class _ToggleRowInsertSuggestionOnly extends StatelessWidget {
+  const _ToggleRowInsertSuggestionOnly();
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final sp = context.watch<SettingsProvider>();
+    return _ToggleRow(
+      label: l10n.displaySettingsPageInsertSuggestionOnlyTitle,
+      value: sp.insertSuggestionOnTapOnly,
+      onChanged: (v) =>
+          context.read<SettingsProvider>().setInsertSuggestionOnTapOnly(v),
+    );
+  }
+}
+
+class _ToggleRowRegenerateDeleteTrailingMessages extends StatelessWidget {
+  const _ToggleRowRegenerateDeleteTrailingMessages();
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final sp = context.watch<SettingsProvider>();
+    return _ToggleRow(
+      label: l10n.displaySettingsPageRegenerateDeleteTrailingMessagesTitle,
+      value: sp.regenerateDeleteTrailingMessages,
+      onChanged: (v) => context
+          .read<SettingsProvider>()
+          .setRegenerateDeleteTrailingMessages(v),
+    );
+  }
+}
+
+class _ToggleRowShowRegenerateConfirmDialog extends StatelessWidget {
+  const _ToggleRowShowRegenerateConfirmDialog();
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final sp = context.watch<SettingsProvider>();
+    return _ToggleRow(
+      label: l10n.displaySettingsPageShowRegenerateConfirmDialogTitle,
+      value: sp.showRegenerateConfirmDialog,
+      onChanged: (v) =>
+          context.read<SettingsProvider>().setShowRegenerateConfirmDialog(v),
     );
   }
 }
@@ -2350,11 +2419,40 @@ class _ToggleRowMsgNavButtons extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final sp = context.watch<SettingsProvider>();
-    return _ToggleRow(
+    final options = <DesktopSelectOption<DesktopMessageNavButtonsMode>>[
+      DesktopSelectOption(
+        value: DesktopMessageNavButtonsMode.always,
+        label: l10n.displaySettingsPageMessageNavButtonsModeAlways,
+      ),
+      DesktopSelectOption(
+        value: DesktopMessageNavButtonsMode.scroll,
+        label: l10n.displaySettingsPageMessageNavButtonsModeScroll,
+      ),
+      DesktopSelectOption(
+        value: DesktopMessageNavButtonsMode.hover,
+        label: l10n.displaySettingsPageMessageNavButtonsModeHover,
+      ),
+      DesktopSelectOption(
+        value: DesktopMessageNavButtonsMode.scrollAndHover,
+        label: l10n.displaySettingsPageMessageNavButtonsModeScrollAndHover,
+      ),
+      DesktopSelectOption(
+        value: DesktopMessageNavButtonsMode.never,
+        label: l10n.displaySettingsPageMessageNavButtonsModeNever,
+      ),
+    ];
+
+    return _LabeledRow(
       label: l10n.displaySettingsPageMessageNavButtonsTitle,
-      value: sp.showMessageNavButtons,
-      onChanged: (v) =>
-          context.read<SettingsProvider>().setShowMessageNavButtons(v),
+      trailing: DesktopSelectDropdown<DesktopMessageNavButtonsMode>(
+        value: sp.desktopMessageNavButtonsMode,
+        options: options,
+        minWidth: 168,
+        maxLabelWidth: 190,
+        onSelected: (mode) => context
+            .read<SettingsProvider>()
+            .setDesktopMessageNavButtonsMode(mode),
+      ),
     );
   }
 }
@@ -2449,17 +2547,23 @@ class _ToggleRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              label,
-              // Reduce toggle row label size to 14 to match other panes
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w400,
-                color: cs.onSurface.withValues(alpha: 0.9),
-                decoration: TextDecoration.none,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  // Reduce toggle row label size to 14 to match other panes
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w400,
+                    color: cs.onSurface.withValues(alpha: 0.9),
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ],
             ),
           ),
+          const SizedBox(width: 12),
           IosSwitch(value: value, onChanged: onChanged),
         ],
       ),

@@ -153,10 +153,48 @@
   },
   "settingsPageAboutSection": "About",
   "settingsPageAbout": "About",
+  "settingsPageStatistics": "Statistics",
   "settingsPageDocs": "Docs",
   "settingsPageLogs": "Logs",
   "settingsPageSponsor": "Sponsor",
   "settingsPageShare": "Share",
+  "statsPageTitle": "Statistics",
+  "statsPageRangeAllTime": "All Time",
+  "statsPageRangeLast30Days": "Last 30 Days",
+  "statsPageRangePreviousMonth": "Last Month",
+  "statsPageRangePreviousQuarter": "Last Quarter",
+  "statsPageRangeCustom": "Custom",
+  "statsPageHeatmapTitle": "Chat Heatmap",
+  "statsPageHeatmapLess": "Less",
+  "statsPageHeatmapMore": "More",
+  "statsPageSummaryTitle": "Overview",
+  "statsPageTotalConversations": "Total Conversations",
+  "statsPageTotalMessages": "Total Messages",
+  "statsPageInputTokens": "Input Tokens",
+  "statsPageOutputTokens": "Output Tokens",
+  "statsPageCachedTokens": "Cached Tokens",
+  "statsPageLaunchCount": "App Launches",
+  "statsPageUsageTrendTitle": "Usage Trend",
+  "statsPageModelUsageTitle": "Model Usage",
+  "statsPageAssistantUsageTitle": "Assistant Usage",
+  "statsPageTopicVolumeTitle": "Topic Volume",
+  "statsPageModelColumn": "Model",
+  "statsPageAssistantColumn": "Assistant",
+  "statsPageTopicColumn": "Topic",
+  "statsPageMessagesColumn": "Messages",
+  "statsPageTopicsColumn": "Topics",
+  "statsPageEmptyTitle": "No statistics yet",
+  "statsPageShowAllTooltip": "Show all",
+  "statsPageClose": "Close",
+  "statsPageUnknownProvider": "Unknown Provider",
+  "statsPageUnknownAssistant": "Default Assistant",
+  "statsPageUnknownModel": "Unknown Model",
+  "statsPageUnknownTopic": "Untitled Topic",
+  "statsPageCustomRangeTitle": "Custom Range",
+  "statsPageCustomRangeStart": "Start",
+  "statsPageCustomRangeEnd": "End",
+  "statsPageCustomRangeCancel": "Cancel",
+  "statsPageCustomRangeApply": "Apply",
   "sponsorPageMethodsSectionTitle": "Sponsorship Methods",
   "sponsorPageSponsorsSectionTitle": "Sponsors",
   "sponsorPageEmpty": "No sponsors yet",
@@ -191,6 +229,11 @@
   "homePageDefaultAssistant": "Default Assistant",
   "mermaidExportPng": "Export PNG",
   "mermaidExportFailed": "Export failed",
+  "mermaidImageTab": "Image",
+  "mermaidCodeTab": "Code",
+  "mermaidFullScreen": "Full screen",
+  "mermaidGeneratingImage": "Generating image",
+  "mermaidGenerationFailedHint": "Generation failed. Try asking another way.",
   "mermaidPreviewOpen": "Open Preview",
   "mermaidPreviewOpenFailed": "Cannot open preview",
   "assistantProviderDefaultAssistantName": "Default Assistant",
@@ -286,6 +329,22 @@
   "assistantEditPageQuickPhraseTab": "Quick Phrase",
   "assistantEditPageCustomTab": "Custom",
   "assistantEditPageRegexTab": "Regex Replace",
+  "assistantEditPageLocalToolsTab": "Local Tools",
+  "assistantEditTabLayoutTooltip": "Customize tabs",
+  "assistantEditTabLayoutTitle": "Customize tabs",
+  "assistantEditTabLayoutSubtitle": "Drag tabs to reorder. Turn off tabs you do not need.",
+  "assistantEditOutlineModeTitle": "Section list style",
+  "assistantEditOutlineModeSubtitle": "Show an assistant overview first, then open each setting section from a list.",
+  "assistantEditTabLayoutResetTooltip": "Reset tab layout",
+  "assistantEditTabLayoutAtLeastOneVisible": "Keep at least one tab visible",
+  "assistantEditTabLayoutDragHandle": "Drag to reorder {tab}",
+  "@assistantEditTabLayoutDragHandle": {
+    "placeholders": {
+      "tab": {
+        "type": "String"
+      }
+    }
+  },
   "assistantEditRegexDescription": "Create regex rules to rewrite or visually adjust user/assistant messages.",
   "assistantEditAddRegexButton": "Add Regex Rule",
   "assistantRegexAddTitle": "Add Regex Rule",
@@ -448,6 +507,16 @@
   "assistantEditVariableMessage": "Message",
   "assistantEditPreviewTitle": "Preview",
   "codeBlockPreviewButton": "Preview",
+  "codeBlockSaveAsButton": "Save as file",
+  "codeBlockCollapseButton": "Collapse",
+  "codeBlockExpandButton": "Expand",
+  "codeBlockDefaultFileNameStem": "code",
+  "markdownTableLabel": "Table",
+  "markdownTableExportCsvTooltip": "Export CSV",
+  "markdownTableSaveImageTooltip": "Save to Gallery",
+  "markdownTableDefaultFileNameStem": "table",
+  "markdownTableCopiedCsvSnackbar": "CSV copied. Long press Copy to copy as image.",
+  "markdownTableCopiedMarkdownSnackbar": "Table copied.",
   "codeBlockCollapsedLines": "… {n} lines folded",
   "@codeBlockCollapsedLines": {
     "placeholders": {
@@ -475,7 +544,6 @@
   },
   "assistantEditModelUseGlobalDefault": "Use global default",
   "assistantSettingsPageTitle": "Assistant Settings",
-  "assistantSettingsDefaultTag": "Default",
   "assistantSettingsCopyButton": "Copy",
   "assistantSettingsCopySuccess": "Assistant copied",
   "assistantSettingsCopySuffix": "Copy",
@@ -568,6 +636,39 @@
   "backupPageLocalBackup": "Local Backup",
   "backupPageImportFromCherryStudio": "Import from Cherry Studio",
   "backupPageImportFromChatbox": "Import from Chatbox",
+  "backupReminderSectionTitle": "Backup Reminder",
+  "backupReminderEnableTitle": "Remind me to back up",
+  "backupReminderFrequencyTitle": "Frequency",
+  "backupReminderTimeTitle": "Reminder Time",
+  "backupReminderTimeInputHint": "HH:mm",
+  "backupReminderTimeInvalid": "Enter a time from 00:00 to 23:59.",
+  "backupReminderLastBackupTitle": "Last Backup",
+  "backupReminderNextReminderTitle": "Next Reminder",
+  "backupReminderNever": "Never",
+  "backupReminderDisabled": "Off",
+  "backupReminderDueNow": "Due now",
+  "backupReminderEveryDay": "Every day",
+  "backupReminderEveryThreeDays": "Every 3 days",
+  "backupReminderEveryWeek": "Every week",
+  "backupReminderEveryFourteenDays": "Every 14 days",
+  "backupReminderEveryMonth": "Every month",
+  "backupReminderCustomDays": "Every {days} days",
+  "@backupReminderCustomDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "backupReminderCustomOption": "Custom...",
+  "backupReminderCustomDialogTitle": "Custom Frequency",
+  "backupReminderCustomDialogDescription": "Enter how many days to wait between backup reminders.",
+  "backupReminderCustomDaysLabel": "Days",
+  "backupReminderCustomDaysInvalid": "Enter a number from 1 to 365.",
+  "backupReminderSidebarTitle": "Backup reminder",
+  "backupReminderSidebarSubtitle": "Your backup interval has arrived.",
+  "backupReminderSidebarAction": "Go to backup",
+  "backupReminderSnoozeTooltip": "Remind me later",
   "chatHistoryPageTitle": "Chat History",
   "chatHistoryPageSearchTooltip": "Search",
   "chatHistoryPageDeleteAllTooltip": "Delete Unpinned",
@@ -599,6 +700,17 @@
   "compressingContext": "Compressing context...",
   "compressContextFailed": "Failed to compress context",
   "compressContextNoMessages": "No messages to compress",
+  "compressContextNoConversation": "No conversation to compress",
+  "compressContextNoModel": "No compression model configured",
+  "compressContextEmptySummary": "Compression returned an empty summary",
+  "compressContextOptionsTitle": "Compress Context",
+  "compressContextOptionsDesc": "Choose which part of the current chat is sent to the compression model.",
+  "compressContextKeepStart": "Start",
+  "compressContextKeepRecent": "Recent",
+  "compressContextUnlimited": "Unlimited",
+  "compressContextMaxCharsLabel": "Characters",
+  "compressContextInvalidLimit": "Enter a positive character count",
+  "compressContextStartButton": "Compress",
   "bottomToolsSheetLearningMode": "Learning Mode",
   "bottomToolsSheetLearningModeDescription": "Help you learn step by step",
   "bottomToolsSheetConfigurePrompt": "Configure prompt",
@@ -687,9 +799,12 @@
       }
     }
   },
+  "chatMessageWidgetSearchResultsTitle": "Search results",
+  "chatMessageWidgetCitationSourcesTitle": "Citation sources",
   "chatMessageWidgetRegenerateTooltip": "Regenerate",
   "chatMessageWidgetRegenerateConfirmTitle": "Confirm Regenerate",
   "chatMessageWidgetRegenerateConfirmContent": "Regenerating only updates this message and keeps the messages below it. Continue?",
+  "chatMessageWidgetRegenerateConfirmDeleteTrailingContent": "Regenerating will delete all messages below this message and cannot be undone. Continue?",
   "chatMessageWidgetRegenerateConfirmCancel": "Cancel",
   "chatMessageWidgetRegenerateConfirmOk": "Regenerate",
   "chatMessageWidgetStopTooltip": "Stop",
@@ -709,6 +824,8 @@
     }
   },
   "chatMessageWidgetBuiltinSearch": "Built-in Search",
+  "chatMessageWidgetReadClipboard": "Read Clipboard",
+  "chatMessageWidgetWriteClipboard": "Write Clipboard",
   "chatMessageWidgetToolCall": "Tool Call: {name}",
   "@chatMessageWidgetToolCall": {
     "placeholders": {
@@ -729,7 +846,7 @@
   "chatMessageWidgetArguments": "Arguments",
   "chatMessageWidgetResult": "Result",
   "chatMessageWidgetImages": "Images",
-  "chatMessageWidgetCitationsCount": "Citations ({count})",
+  "chatMessageWidgetCitationsCount": "{count} citations",
   "@chatMessageWidgetCitationsCount": {
     "placeholders": {
       "count": {
@@ -897,6 +1014,8 @@
   "chatInputBarReasoningStrengthTooltip": "Reasoning Strength",
   "chatInputBarMcpServersTooltip": "MCP Servers",
   "chatInputBarMoreTooltip": "Add",
+  "chatInputBarImageMode": "Image mode",
+  "chatInputBarDisableImageModeTooltip": "Turn off image mode",
   "chatInputBarQueuedPending": "Queued to send",
   "chatInputBarQueuedCancel": "Cancel Queue",
   "chatInputBarInsertNewline": "Newline",
@@ -978,6 +1097,8 @@
   "defaultModelPageTitleModelSubtitle": "Used for summarizing conversation titles; prefer fast & cheap models",
   "defaultModelPageSummaryModelTitle": "Summary Model",
   "defaultModelPageSummaryModelSubtitle": "Used for generating conversation summaries; prefer fast and cheap models",
+  "defaultModelPageSuggestionModelTitle": "Chat Suggestions Model",
+  "defaultModelPageSuggestionModelSubtitle": "Used for follow-up suggestion bubbles after assistant replies. Disabled until a model is selected.",
   "assistantEditRecentChatsSummaryFrequencyTitle": "Summary Refresh Frequency",
   "assistantEditRecentChatsSummaryFrequencyDescription": "Refresh recent-chat summaries after the selected number of new messages.",
   "assistantEditRecentChatsSummaryFrequencyOption": "Every {count}",
@@ -1001,6 +1122,7 @@
   "defaultModelPagePromptLabel": "Prompt",
   "defaultModelPageTitlePromptHint": "Enter prompt template for title summarization",
   "defaultModelPageSummaryPromptHint": "Enter prompt template for summary generation",
+  "defaultModelPageSuggestionPromptHint": "Enter prompt template for chat suggestions",
   "defaultModelPageTranslatePromptHint": "Enter prompt template for translation",
   "defaultModelPageOcrPromptHint": "Enter prompt template for OCR image understanding",
   "defaultModelPageResetDefault": "Reset to default",
@@ -1023,6 +1145,17 @@
         "type": "String"
       },
       "userMessagesVar": {
+        "type": "String"
+      }
+    }
+  },
+  "defaultModelPageSuggestionVars": "Variables: conversation: {contentVar}, language: {localeVar}",
+  "@defaultModelPageSuggestionVars": {
+    "placeholders": {
+      "contentVar": {
+        "type": "String"
+      },
+      "localeVar": {
         "type": "String"
       }
     }
@@ -1053,6 +1186,7 @@
     }
   },
   "defaultModelPageUseCurrentModel": "Use current chat model",
+  "defaultModelPageNotEnabled": "Not enabled",
   "translatePagePasteButton": "Paste",
   "translatePageCopyResult": "Copy result",
   "translatePageClearAll": "Clear All",
@@ -1141,6 +1275,32 @@
   "providerDetailPageResponseApiTitle": "Response API (/responses)",
   "providerDetailPageAihubmixAppCodeLabel": "APP-Code (10% off)",
   "providerDetailPageAihubmixAppCodeHelp": "Adds header APP-Code requests to get a 10% discount. Only affects AIhubmix.",
+  "providerDetailPageClaudePromptCachingTitle": "Claude Prompt Caching",
+  "providerDetailPageClaudePromptCachingHelp": "Adds cache_control to the system prompt for Claude requests through Anthropic or OpenRouter.",
+  "providerDetailPageBalanceTitle": "Account Balance",
+  "providerDetailPageBalanceInfo": "Get account balance",
+  "providerDetailPageBalanceApiPathLabel": "Balance API Path",
+  "providerDetailPageBalanceResultPathLabel": "Result JSON Path",
+  "providerDetailPageBalanceQueryButton": "Check Balance",
+  "providerDetailPageBalanceQuerying": "Checking...",
+  "providerDetailPageBalanceResetDefaultsButton": "Reset",
+  "providerDetailPageBalanceResetDefaultsTooltip": "Reset balance settings",
+  "providerDetailPageBalanceResult": "Balance: {value}",
+  "@providerDetailPageBalanceResult": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "providerDetailPageBalanceError": "Balance query failed: {message}",
+  "@providerDetailPageBalanceError": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
   "providerDetailPageVertexAiTitle": "Vertex AI",
   "providerDetailPageLocationLabel": "Location",
   "providerDetailPageProjectIdLabel": "Project ID",
@@ -1291,6 +1451,9 @@
   "searchServicesAddDialogAdd": "Add",
   "searchServicesAddDialogApiKeyRequired": "API Key is required",
   "searchServicesFieldCustomUrlOptional": "Custom URL (optional)",
+  "searchServicesDialogApiKey": "API Key",
+  "searchServicesDialogModel": "Model",
+  "searchServicesDialogSystemPrompt": "System Prompt",
   "searchServicesAddDialogInstanceUrl": "Instance URL",
   "searchServicesAddDialogUrlRequired": "URL is required",
   "searchServicesAddDialogEnginesOptional": "Engines (optional)",
@@ -1380,7 +1543,10 @@
   "displaySettingsPageCollapseThinkingStepsTitle": "Collapse Thinking Steps",
   "displaySettingsPageCollapseThinkingStepsSubtitle": "Show only the latest steps until expanded",
   "displaySettingsPageShowToolResultSummaryTitle": "Show Tool Result Summary",
+  "displaySettingsPageInsertSuggestionOnlyTitle": "Insert suggestions without sending",
   "displaySettingsPageShowToolResultSummarySubtitle": "Display the summary text below tool steps",
+  "displaySettingsPageRegenerateDeleteTrailingMessagesTitle": "Delete messages below when regenerating",
+  "displaySettingsPageShowRegenerateConfirmDialogTitle": "Confirm before regenerating",
   "chainOfThoughtExpandSteps": "Show {count} more steps",
   "@chainOfThoughtExpandSteps": {
     "placeholders": {
@@ -1390,13 +1556,22 @@
   "chainOfThoughtCollapse": "Collapse",
   "displaySettingsPageShowChatListDateTitle": "Show Chat List Dates",
   "displaySettingsPageShowChatListDateSubtitle": "Display date group labels in the conversation list",
+  "displaySettingsPageEnableImageCropperTitle": "Enable Image Cropping",
+  "@displaySettingsPageEnableImageCropperTitle": {},
+  "displaySettingsPageEnableImageCropperSubtitle": "Crop images after selecting from gallery or camera",
+  "@displaySettingsPageEnableImageCropperSubtitle": {},
   "displaySettingsPageKeepSidebarOpenOnAssistantTapTitle": "Keep sidebar open when selecting assistant",
   "displaySettingsPageKeepSidebarOpenOnTopicTapTitle": "Keep sidebar open when selecting topic",
   "displaySettingsPageKeepAssistantListExpandedOnSidebarCloseTitle": "Don't collapse assistant list when closing sidebar",
   "displaySettingsPageShowUpdatesTitle": "Show Updates",
   "displaySettingsPageShowUpdatesSubtitle": "Show app update notifications",
   "displaySettingsPageMessageNavButtonsTitle": "Message Navigation Buttons",
-  "displaySettingsPageMessageNavButtonsSubtitle": "Show quick jump buttons when scrolling",
+  "displaySettingsPageMessageNavButtonsSubtitle": "Choose when quick jump buttons appear",
+  "displaySettingsPageMessageNavButtonsModeAlways": "Always show",
+  "displaySettingsPageMessageNavButtonsModeScroll": "Show while scrolling",
+  "displaySettingsPageMessageNavButtonsModeHover": "Show on mouse hover",
+  "displaySettingsPageMessageNavButtonsModeScrollAndHover": "Show while scrolling or hovering",
+  "displaySettingsPageMessageNavButtonsModeNever": "Never show",
   "displaySettingsPageUseNewAssistantAvatarUxTitle": "Show assistant avatar in chat title bar",
   "displaySettingsPageHapticsOnSidebarTitle": "Haptics on Sidebar",
   "displaySettingsPageHapticsOnSidebarSubtitle": "Enable haptic feedback when opening/closing sidebar",
@@ -1444,7 +1619,7 @@
   "desktopFontLoading": "Loading fonts…",
   "displaySettingsPageFontLocalFileLabel": "Local file",
   "displaySettingsPageFontResetLabel": "Reset font settings",
-  "displaySettingsPageOtherSettingsTitle": "Other",
+  "displaySettingsPageOtherSettingsTitle": "Other Settings",
   "themeSettingsPageDynamicColorSection": "Dynamic Color",
   "themeSettingsPageUseDynamicColorTitle": "System Dynamic Colors",
   "themeSettingsPageUseDynamicColorSubtitle": "Match system palette (Android 12+)",
@@ -1515,7 +1690,41 @@
     }
   },
   "imageViewerPageShareButton": "Share Image",
+  "imageViewerPageCloseButton": "Close preview",
   "imageViewerPageSaveButton": "Save Image",
+  "imageViewerPageCopyButton": "Copy Image",
+  "imageViewerPagePreviousButton": "Previous Image",
+  "imageViewerPageNextButton": "Next Image",
+  "imageViewerPageZoomInButton": "Zoom In",
+  "imageViewerPageZoomOutButton": "Zoom Out",
+  "imageViewerPageResetZoomButton": "Reset Zoom",
+  "imageViewerPageFlipHorizontalButton": "Flip Horizontal",
+  "imageViewerPageFlipVerticalButton": "Flip Vertical",
+  "imageViewerPageRotateLeftButton": "Rotate Left",
+  "imageViewerPageRotateRightButton": "Rotate Right",
+  "imageViewerPageCounter": "{index}/{total}",
+  "@imageViewerPageCounter": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "imageViewerPageImageLabel": "Image {index} of {total}",
+  "@imageViewerPageImageLabel": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "imageViewerPageImageLoadFailed": "Unable to load image",
   "imageViewerPageSaveSuccess": "Saved to gallery",
   "imageViewerPageSaveFailed": "Save failed: {error}",
   "@imageViewerPageSaveFailed": {
@@ -1552,8 +1761,20 @@
   "searchProviderPerplexityDescription": "Perplexity Search API. Ranked web results with region and domain filters.",
   "searchServiceNameBocha": "Bocha",
   "searchProviderBochaDescription": "Bocha web search API. Accurate web results with optional summaries.",
+  "searchServiceNameSerper": "Serper",
+  "searchProviderSerperDescription": "Serper Google Search API. Fast web results with optional country, language, time, and page filters.",
+  "searchServiceNameGrok": "Grok",
+  "searchProviderGrokDescription": "Grok search via xAI Responses API. Uses web and X search tools and returns cited sources.",
+  "searchServicesDialogCountryOptional": "Country/region (optional)",
+  "searchServicesDialogLanguageOptional": "Language (optional)",
+  "searchServicesDialogTimeFilterOptional": "Time filter (optional)",
+  "searchServicesDialogPageOptional": "Page (optional)",
+  "searchServicesDialogPageInvalid": "Page must be a positive integer.",
   "generationInterrupted": "Generation interrupted",
   "titleForLocale": "New Chat",
+  "temporaryChatTitle": "Temporary Chat",
+  "temporaryChatEmptyMessage": "Temporary chats do not appear in history and will be deleted completely after you leave.",
+  "temporaryChatToggleTooltip": "Toggle temporary chat",
   "quickPhraseBackTooltip": "Back",
   "quickPhraseGlobalTitle": "Quick Phrase",
   "quickPhraseAssistantTitle": "Assistant Quick Phrase",
@@ -1602,6 +1823,12 @@
   "assistantEditQuickPhraseDescription": "Manage quick phrases for this assistant. Click the button below to add phrases.",
   "assistantEditManageQuickPhraseButton": "Manage Quick Phrases",
   "assistantEditPageMemoryTab": "Memory",
+  "assistantEditLocalToolTimeInfoTitle": "Time Info",
+  "assistantEditLocalToolTimeInfoSubtitle": "Read the device date, weekday, time, timezone, UTC offset, and timestamp.",
+  "assistantEditLocalToolClipboardTitle": "Clipboard",
+  "assistantEditLocalToolClipboardSubtitle": "Read or write plain text from the device clipboard when explicitly needed.",
+  "assistantEditLocalToolAskUserTitle": "Ask User",
+  "assistantEditLocalToolAskUserSubtitle": "Let the assistant ask short questions and continue after you answer.",
   "assistantEditMemorySwitchTitle": "Memory",
   "assistantEditMemorySwitchDescription": "Allow the assistant to create and use memories across chats.",
   "assistantEditRecentChatsSwitchTitle": "Recent Chats Reference",
@@ -1632,14 +1859,15 @@
   "displaySettingsPageBehaviorStartupTitle": "Behavior & startup",
   "displaySettingsPageHapticsSettingsTitle": "Haptics",
   "assistantSettingsNoPromptPlaceholder": "No prompt yet",
-  "providersPageMultiSelectTooltip": "Multi-select"
-  ,
+  "providersPageMultiSelectTooltip": "Multi-select",
   "providersPageDeleteSelectedConfirmContent": "Delete selected providers? This cannot be undone.",
   "providersPageDeleteSelectedSnackbar": "Deleted selected providers",
   "providersPageExportSelectedTitle": "Export {count} providers",
   "@providersPageExportSelectedTitle": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "providersPageExportCopyButton": "Copy",
@@ -1679,7 +1907,9 @@
   "networkProxyTestFailed": "Test failed: {error}",
   "@networkProxyTestFailed": {
     "placeholders": {
-      "error": { "type": "String" }
+      "error": {
+        "type": "String"
+      }
     }
   },
   "networkProxyNoUrl": "Please enter a URL",
@@ -1697,7 +1927,6 @@
   "providerDetailPageDetectSuccess": "Detection successful",
   "providerDetailPageDetectFailed": "Detection failed",
   "providerDetailPageDeleteAllModelsWarning": "This action cannot be undone.",
-  "displaySettingsPageOtherSettingsTitle": "Other Settings",
   "requestLogSettingTitle": "Request Logging",
   "requestLogSettingSubtitle": "When enabled, request/response details are written to logs/logs.txt (rotated daily).",
   "flutterLogSettingTitle": "Flutter Logging",
@@ -1847,41 +2076,143 @@
   "toolApprovalDenyTitle": "Deny tool call",
   "toolApprovalDenyHint": "Reason (optional)",
   "toolApprovalDeniedMessage": "Tool call \"{toolName}\" was denied by user. Reason: {reason}",
+  "askUserCardSubmit": "Submit answer",
+  "askUserCardCustomHint": "Type your answer",
+  "askUserCardSomethingElse": "Something else",
+  "askUserCardSkip": "Skip",
+  "askUserCardSkipped": "Skipped",
+  "askUserCardAnswered": "Answered",
+  "askUserCardInactive": "This question is no longer active. Regenerate or continue the conversation.",
+  "askUserCardCancelled": "Question cancelled",
+  "askUserCardQuestionCount": "Ask {count} questions",
+  "@askUserCardQuestionCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "tokenDetailPromptTokens": "{count} tokens",
   "@tokenDetailPromptTokens": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "tokenDetailPromptTokensWithCache": "{count} tokens ({cached} cached)",
   "@tokenDetailPromptTokensWithCache": {
     "placeholders": {
-      "count": {"type": "int"},
-      "cached": {"type": "int"}
+      "count": {
+        "type": "int"
+      },
+      "cached": {
+        "type": "int"
+      }
     }
   },
   "tokenDetailCompletionTokens": "{count} tokens",
   "@tokenDetailCompletionTokens": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "tokenDetailSpeed": "{value} tok/s",
   "@tokenDetailSpeed": {
     "placeholders": {
-      "value": {"type": "String"}
+      "value": {
+        "type": "String"
+      }
     }
   },
   "tokenDetailDuration": "{value}s",
   "@tokenDetailDuration": {
     "placeholders": {
-      "value": {"type": "String"}
+      "value": {
+        "type": "String"
+      }
     }
   },
   "tokenDetailTotalTokens": "{count} tokens",
   "@tokenDetailTotalTokens": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "debugPageTitle": "Debug",
+  "debugPageConversationToolsTitle": "Conversation tools",
+  "debugPageCreateOversizedConversationButton": "Create oversized conversation (30 MB)",
+  "debugPageCreateManyMessagesConversationButton": "Create 1024-message conversation",
+  "debugPageCreateDailyMixedMarkdownConversationButton": "Create 3000 daily mixed Markdown messages",
+  "debugPageCreateLongReasoningConversationButton": "Create long reasoning conversation (128 messages)",
+  "debugPageCreatingButton": "Creating...",
+  "debugPageCreatingOversizedConversation": "Creating a 30 MB oversized conversation...",
+  "debugPageCreatingManyMessagesConversation": "Creating a 1024-message conversation...",
+  "debugPageCreatingDailyMixedMarkdownConversation": "Creating a 3000-message daily mixed Markdown conversation...",
+  "debugPageCreatingLongReasoningConversation": "Creating a long reasoning debug conversation...",
+  "debugPageNoCurrentAssistant": "No current assistant. Create or select an assistant first.",
+  "debugPageConversationCreated": "Created debug conversation with {count} messages.",
+  "@debugPageConversationCreated": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "debugPageCreateConversationFailed": "Failed to create debug conversation: {error}",
+  "@debugPageCreateConversationFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "debugPageOversizedConversationTitle": "Oversized conversation test ({sizeMB} MB)",
+  "@debugPageOversizedConversationTitle": {
+    "placeholders": {
+      "sizeMB": {
+        "type": "int"
+      }
+    }
+  },
+  "debugPageManyMessagesConversationTitle": "{count}-message conversation test",
+  "@debugPageManyMessagesConversationTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "debugPageDailyMixedMarkdownConversationTitle": "{count}-message daily mixed Markdown test",
+  "@debugPageDailyMixedMarkdownConversationTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "debugPageLongReasoningConversationTitle": "{count}-message long reasoning test",
+  "@debugPageLongReasoningConversationTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "debugPageOversizedConversationSeedText": "This is long debug text for reproducing slow rendering in oversized conversations. It includes repeated Markdown-like text, punctuation, CJK content, and plain words so chat rendering, storage, and scrolling can be profiled.",
+  "debugPageManyMessagesSeedText": "{role} message #{index}: quick random debug sample for testing list rendering, scrolling stability, message grouping, and conversation history performance.",
+  "@debugPageManyMessagesSeedText": {
+    "placeholders": {
+      "role": {
+        "type": "String"
+      },
+      "index": {
+        "type": "int"
+      }
     }
   }
 }

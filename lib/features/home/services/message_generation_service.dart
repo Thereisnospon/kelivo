@@ -5,6 +5,7 @@ import '../../../core/models/chat_input_data.dart';
 import '../../../core/models/chat_message.dart';
 import '../../../core/models/conversation.dart';
 import '../../../core/providers/settings_provider.dart';
+import '../../../core/services/api/chat_api_service.dart';
 import '../../../core/services/chat/chat_service.dart';
 import '../../../core/services/model_override_payload_parser.dart';
 import '../../../core/utils/multimodal_input_utils.dart';
@@ -13,6 +14,7 @@ import '../../../utils/assistant_regex.dart';
 import '../../../core/models/assistant_regex.dart';
 import '../controllers/stream_controller.dart' as stream_ctrl;
 import '../controllers/generation_controller.dart';
+import 'ask_user_interaction_service.dart';
 import 'message_builder_service.dart';
 import 'tool_approval_service.dart';
 
@@ -49,7 +51,7 @@ Map<String, String>? buildConversationRequestHeaders({
 class PreparedGeneration {
   final List<Map<String, dynamic>> apiMessages;
   final List<Map<String, dynamic>> toolDefs;
-  final Future<String> Function(String, Map<String, dynamic>)? onToolCall;
+  final ToolCallHandler? onToolCall;
   final bool hasBuiltInSearch;
   final List<String> lastUserImagePaths;
 
@@ -118,13 +120,16 @@ class MessageGenerationService {
     required String providerKey,
     required String modelId,
     ToolApprovalService? approvalService,
+    AskUserInteractionService? askUserService,
   }) async {
     final cfg = settings.getProviderConfig(providerKey);
     final kind = ProviderConfig.classify(
       providerKey,
       explicitType: cfg.providerType,
     );
-    final includeOpenAIToolMessages = kind == ProviderKind.openai;
+    final includeToolMessages = switch (kind) {
+      ProviderKind.openai || ProviderKind.claude || ProviderKind.google => true,
+    };
 
     onFileProcessingStarted?.call();
 
@@ -133,7 +138,7 @@ class MessageGenerationService {
       messages: messages,
       versionSelections: versionSelections,
       currentConversation: currentConversation,
-      includeOpenAIToolMessages: includeOpenAIToolMessages,
+      includeToolMessages: includeToolMessages,
     );
 
     // Apply assistant replace-only regexes at send-time (visual stays unchanged).
@@ -203,6 +208,7 @@ class MessageGenerationService {
             settings,
             assistant,
             approvalService: approvalService,
+            askUserService: askUserService,
           )
         : null;
 
@@ -281,6 +287,7 @@ class MessageGenerationService {
     required ChatMessage assistantMessage,
     required PreparedGeneration prepared,
     required List<String> userImagePaths,
+    required bool allowImagesApiRouting,
     required String providerKey,
     required String modelId,
     required Assistant? assistant,
@@ -293,6 +300,7 @@ class MessageGenerationService {
       assistantMessage: assistantMessage,
       apiMessages: prepared.apiMessages,
       userImagePaths: userImagePaths,
+      allowImagesApiRouting: allowImagesApiRouting,
       providerKey: providerKey,
       modelId: modelId,
       assistant: assistant,
@@ -403,30 +411,43 @@ class MessageGenerationService {
   }
 
   /// Remove trailing messages after regeneration cut point.
+  @visibleForTesting
+  static List<String> collectTrailingMessageIdsForRemoval({
+    required List<ChatMessage> messages,
+    required int lastKeep,
+    required String? targetGroupId,
+  }) {
+    if (lastKeep >= messages.length - 1) {
+      return const [];
+    }
+
+    final keepGroups = <String>{};
+    for (int i = 0; i <= lastKeep && i < messages.length; i++) {
+      keepGroups.add(messages[i].groupId ?? messages[i].id);
+    }
+    if (targetGroupId != null) keepGroups.add(targetGroupId);
+
+    final removeIds = <String>[];
+    for (final message in messages.sublist(lastKeep + 1)) {
+      final groupId = message.groupId ?? message.id;
+      if (!keepGroups.contains(groupId)) {
+        removeIds.add(message.id);
+      }
+    }
+    return removeIds;
+  }
+
+  /// Remove trailing messages after regeneration cut point.
   Future<List<String>> removeTrailingMessages({
     required List<ChatMessage> messages,
     required int lastKeep,
     required String? targetGroupId,
   }) async {
-    if (lastKeep >= messages.length - 1) {
-      return const [];
-    }
-
-    // Collect groups that appear at or before lastKeep
-    final keepGroups = <String>{};
-    for (int i = 0; i <= lastKeep && i < messages.length; i++) {
-      final g = (messages[i].groupId ?? messages[i].id);
-      keepGroups.add(g);
-    }
-    if (targetGroupId != null) keepGroups.add(targetGroupId);
-
-    final trailing = messages.sublist(lastKeep + 1);
-    final removeIds = <String>[];
-    for (final m in trailing) {
-      final gid = (m.groupId ?? m.id);
-      final shouldKeep = keepGroups.contains(gid);
-      if (!shouldKeep) removeIds.add(m.id);
-    }
+    final removeIds = collectTrailingMessageIdsForRemoval(
+      messages: messages,
+      lastKeep: lastKeep,
+      targetGroupId: targetGroupId,
+    );
 
     for (final id in removeIds) {
       try {

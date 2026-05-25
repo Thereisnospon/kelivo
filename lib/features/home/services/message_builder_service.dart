@@ -110,7 +110,7 @@ class MessageBuilderService {
     required List<ChatMessage> messages,
     required Map<String, int> versionSelections,
     required Conversation? currentConversation,
-    bool includeOpenAIToolMessages = false,
+    bool includeToolMessages = false,
   }) {
     final tIndex = currentConversation?.truncateIndex ?? -1;
     final List<ChatMessage> sourceAll =
@@ -126,7 +126,7 @@ class MessageBuilderService {
 
     for (final m in source) {
       String? toolContinuationReasoningContent;
-      if (includeOpenAIToolMessages && m.role == 'assistant') {
+      if (includeToolMessages && m.role == 'assistant') {
         final events = chatService.getToolEvents(m.id);
         if (events.isNotEmpty) {
           toolContinuationReasoningContent =
@@ -157,6 +157,8 @@ class MessageBuilderService {
               'id': id,
               'type': 'function',
               'function': {'name': name, 'arguments': argumentsJson},
+              if (e['metadata'] is Map)
+                'metadata': (e['metadata'] as Map).cast<String, dynamic>(),
             });
 
             final c = e['content'];
@@ -166,6 +168,8 @@ class MessageBuilderService {
                 'name': name,
                 'tool_call_id': id,
                 'content': c.toString(),
+                if (e['metadata'] is Map)
+                  'metadata': (e['metadata'] as Map).cast<String, dynamic>(),
               });
             }
           }
@@ -528,6 +532,7 @@ class MessageBuilderService {
         final mp = contextProvider.read<MemoryProvider>();
         await mp.initialize();
         final mems = mp.getForAssistant(assistant!.id);
+        final currentHour = _formatCurrentHour(DateTime.now());
         final buf = StringBuffer();
         buf.writeln('## Memories');
         buf.writeln(
@@ -559,7 +564,7 @@ class MessageBuilderService {
 - 首次聊天时间
 - ...
 请主动调用工具记录，而不是需要用户要求。
-记忆如果包含日期信息，请包含在内，请使用绝对时间格式，并且当前时间是 ${DateTime.now().toIso8601String()}。
+记忆如果包含日期信息，请包含在内，请使用绝对时间格式，并且当前时间是$currentHour。
 无需告知用户你已更改记忆记录，也不要在对话中直接显示记忆内容，除非用户主动要求。
 相似或相关的记忆应合并为一条记录，而不要重复记录，过时记录应删除。
 你可以在和用户闲聊的时候暗示用户你能记住东西。
@@ -599,6 +604,10 @@ class MessageBuilderService {
         }
       }
     } catch (_) {}
+  }
+
+  String _formatCurrentHour(DateTime now) {
+    return '${now.year}年${now.month}月${now.day}日的${now.hour}点';
   }
 
   /// Inject search tool usage prompt into apiMessages.

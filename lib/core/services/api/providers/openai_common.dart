@@ -29,6 +29,27 @@ void _applyCompatibleBuiltInSearch(
   final builtIns = _builtInTools(config, modelId);
   if (!builtIns.contains(BuiltInToolNames.search)) return;
 
+  if (BuiltInToolsHelper.isOpenRouterProvider(config)) {
+    if (config.useResponseApi == true) return;
+    final plugins = <Map<String, dynamic>>[];
+    final existingPlugins = body['plugins'];
+    if (existingPlugins is List) {
+      for (final plugin in existingPlugins) {
+        if (plugin is Map) {
+          plugins.add(plugin.cast<String, dynamic>());
+        }
+      }
+    }
+    final hasWebPlugin = plugins.any(
+      (plugin) => (plugin['id'] ?? '').toString() == 'web',
+    );
+    if (!hasWebPlugin) {
+      plugins.add({'id': 'web'});
+    }
+    body['plugins'] = plugins;
+    return;
+  }
+
   if (BuiltInToolsHelper.isGrokModel(upstreamModelId)) {
     body['search_parameters'] = {'mode': 'auto', 'return_citations': true};
     return;
@@ -229,6 +250,29 @@ bool _shouldIncludeStreamingUsageOptions(
     return false;
   }
   return !host.contains('mistral.ai') && !host.contains('openrouter');
+}
+
+bool _isClaudeModelId(String modelId) {
+  final normalized = modelId.trim().toLowerCase();
+  return normalized.contains('claude') || normalized.contains('anthropic/');
+}
+
+bool _shouldCacheClaudeSystemPrompt(
+  ProviderConfig config,
+  String upstreamModelId,
+) {
+  return config.claudePromptCachingEnabled == true &&
+      BuiltInToolsHelper.isOpenRouterProvider(config) &&
+      _isClaudeModelId(upstreamModelId);
+}
+
+void _applyOpenRouterClaudePromptCaching(
+  Map<String, dynamic> body, {
+  required ProviderConfig config,
+  required String upstreamModelId,
+}) {
+  if (!_shouldCacheClaudeSystemPrompt(config, upstreamModelId)) return;
+  body['cache_control'] = {'type': 'ephemeral'};
 }
 
 void _maybeAddStreamingUsageOptions(
@@ -463,6 +507,129 @@ Future<List<Map<String, dynamic>>> _buildLongCatOmniMessages(
   return out;
 }
 
+Future<List<Map<String, dynamic>>> _buildOpenAIChatCompletionMessages(
+  List<Map<String, dynamic>> messages, {
+  List<String>? userMediaPaths,
+  required bool canImageInput,
+}) async {
+  final out = <Map<String, dynamic>>[];
+  for (int i = 0; i < messages.length; i++) {
+    final m = messages[i];
+    final isLast = i == messages.length - 1;
+    final raw = (m['content'] ?? '').toString();
+    final role = (m['role'] ?? 'user').toString();
+    final outMsg = Map<String, dynamic>.from(m);
+    outMsg.remove(multimodalInternalMediaPathsKey);
+    outMsg['role'] = role;
+
+    if (role == 'system') {
+      outMsg['content'] = raw;
+      out.add(outMsg);
+      continue;
+    }
+
+    if (role == 'tool' ||
+        (role == 'assistant' &&
+            outMsg['tool_calls'] is List &&
+            (outMsg['tool_calls'] as List).isNotEmpty)) {
+      outMsg['content'] = raw;
+      out.add(outMsg);
+      continue;
+    }
+
+    final hasMarkdownImages = raw.contains('![') && raw.contains('](');
+    final hasCustomImages = raw.contains('[image:');
+    final hasAttachedImages =
+        isLast && (userMediaPaths?.isNotEmpty == true) && (role == 'user');
+
+    if (!hasMarkdownImages && !hasCustomImages && !hasAttachedImages) {
+      outMsg['content'] = raw;
+      out.add(outMsg);
+      continue;
+    }
+
+    final parsed = await _parseTextAndImages(
+      raw,
+      allowRemoteImages: canImageInput,
+      allowLocalImages: true,
+      keepRemoteMarkdownText: true,
+    );
+    final parts = <Map<String, dynamic>>[];
+    final seenSources = <String>{};
+    final seenImageUrls = <String>{};
+    final seenVideoUrls = <String>{};
+
+    String normalizeSrc(String src) {
+      if (src.startsWith('http') || src.startsWith('data:')) return src;
+      try {
+        return SandboxPathResolver.fix(src);
+      } catch (_) {
+        return src;
+      }
+    }
+
+    void addImageUrl(String url) {
+      if (url.isEmpty) return;
+      if (seenImageUrls.add(url)) {
+        parts.add({
+          'type': 'image_url',
+          'image_url': {'url': url},
+        });
+      }
+    }
+
+    void addVideoUrl(String url) {
+      if (url.isEmpty) return;
+      if (seenVideoUrls.add(url)) {
+        parts.add({
+          'type': 'video_url',
+          'video_url': {'url': url},
+        });
+      }
+    }
+
+    if (parsed.text.isNotEmpty) {
+      parts.add({'type': 'text', 'text': parsed.text});
+    }
+    for (final ref in parsed.images) {
+      final normalized = normalizeSrc(ref.src);
+      if (!seenSources.add(normalized)) continue;
+      final String url;
+      if (ref.kind == 'data') {
+        url = ref.src;
+      } else if (ref.kind == 'path') {
+        url = await _encodeBase64File(ref.src, withPrefix: true);
+      } else {
+        url = ref.src;
+      }
+      addImageUrl(url);
+    }
+    if (hasAttachedImages) {
+      for (final p in userMediaPaths!) {
+        final normalized = normalizeSrc(p);
+        if (!seenSources.add(normalized)) continue;
+        final bool isInlineUrl = p.startsWith('http') || p.startsWith('data:');
+        final String mime = isInlineUrl
+            ? _mimeFromDataUrl(p)
+            : _mimeFromPath(p);
+        if (isAudioMime(mime)) continue;
+        final bool isVideo = isVideoMime(mime);
+        final String dataUrl = isInlineUrl
+            ? p
+            : await _encodeBase64File(p, withPrefix: true);
+        if (isVideo) {
+          addVideoUrl(dataUrl);
+        } else {
+          addImageUrl(dataUrl);
+        }
+      }
+    }
+    outMsg['content'] = parts;
+    out.add(outMsg);
+  }
+  return out;
+}
+
 String _extractOpenAICompatibleDeltaText(Map? delta) {
   if (delta == null) return '';
   final deltaType = (delta['type'] ?? '').toString();
@@ -509,7 +676,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
   double? topP,
   int? maxTokens,
   List<Map<String, dynamic>>? tools,
-  Future<String> Function(String, Map<String, dynamic>)? onToolCall,
+  ToolCallHandler? onToolCall,
   Map<String, String>? extraHeaders,
   Map<String, dynamic>? extraBody,
   bool stream = true,
@@ -897,125 +1064,11 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
         if (tools != null && tools.isNotEmpty) 'tool_choice': 'auto',
       };
     } else {
-      final mm = <Map<String, dynamic>>[];
-      for (int i = 0; i < messages.length; i++) {
-        final m = messages[i];
-        final isLast = i == messages.length - 1;
-        final raw = (m['content'] ?? '').toString();
-        final role = (m['role'] ?? 'user').toString();
-        final outMsg = Map<String, dynamic>.from(m);
-        outMsg.remove(multimodalInternalMediaPathsKey);
-        outMsg['role'] = role;
-
-        // System 消息保持为纯文本，不解析为图片
-        if (role == 'system') {
-          outMsg['content'] = raw;
-          mm.add(outMsg);
-          continue;
-        }
-
-        // Tool / tool_calls messages must preserve tool-specific fields (tool_call_id / tool_calls / name).
-        // Also do not convert tool output to multimodal parts, as many OpenAI-compatible backends require tool content to be a string.
-        if (role == 'tool' ||
-            (role == 'assistant' &&
-                outMsg['tool_calls'] is List &&
-                (outMsg['tool_calls'] as List).isNotEmpty)) {
-          outMsg['content'] = raw;
-          mm.add(outMsg);
-          continue;
-        }
-
-        // Only parse images if there are images to process
-        final hasMarkdownImages = raw.contains('![') && raw.contains('](');
-        final hasCustomImages = raw.contains('[image:');
-        final hasAttachedImages =
-            isLast && (userImagePaths?.isNotEmpty == true) && (role == 'user');
-
-        if (hasMarkdownImages || hasCustomImages || hasAttachedImages) {
-          final parsed = await _parseTextAndImages(
-            raw,
-            allowRemoteImages: canImageInput,
-            allowLocalImages: true,
-            keepRemoteMarkdownText: true,
-          );
-          final parts = <Map<String, dynamic>>[];
-          final seenSources = <String>{};
-          final seenImageUrls = <String>{};
-          final seenVideoUrls = <String>{};
-          String normalizeSrc(String src) {
-            if (src.startsWith('http') || src.startsWith('data:')) return src;
-            try {
-              return SandboxPathResolver.fix(src);
-            } catch (_) {
-              return src;
-            }
-          }
-
-          void addImageUrl(String url) {
-            if (url.isEmpty) return;
-            if (seenImageUrls.add(url)) {
-              parts.add({
-                'type': 'image_url',
-                'image_url': {'url': url},
-              });
-            }
-          }
-
-          void addVideoUrl(String url) {
-            if (url.isEmpty) return;
-            if (seenVideoUrls.add(url)) {
-              parts.add({
-                'type': 'video_url',
-                'video_url': {'url': url},
-              });
-            }
-          }
-
-          if (parsed.text.isNotEmpty) {
-            parts.add({'type': 'text', 'text': parsed.text});
-          }
-          for (final ref in parsed.images) {
-            final normalized = normalizeSrc(ref.src);
-            if (!seenSources.add(normalized)) continue;
-            String url;
-            if (ref.kind == 'data') {
-              url = ref.src;
-            } else if (ref.kind == 'path') {
-              url = await _encodeBase64File(ref.src, withPrefix: true);
-            } else {
-              url = ref.src;
-            }
-            addImageUrl(url);
-          }
-          if (hasAttachedImages) {
-            for (final p in userImagePaths!) {
-              final normalized = normalizeSrc(p);
-              if (!seenSources.add(normalized)) continue;
-              final bool isInlineUrl =
-                  p.startsWith('http') || p.startsWith('data:');
-              final String mime = isInlineUrl
-                  ? _mimeFromDataUrl(p)
-                  : _mimeFromPath(p);
-              if (isAudioMime(mime)) continue;
-              final bool isVideo = isVideoMime(mime);
-              final String dataUrl = isInlineUrl
-                  ? p
-                  : await _encodeBase64File(p, withPrefix: true);
-              if (isVideo) {
-                addVideoUrl(dataUrl);
-              } else {
-                addImageUrl(dataUrl);
-              }
-            }
-          }
-          outMsg['content'] = parts;
-          mm.add(outMsg);
-        } else {
-          // No images, use simple string content
-          outMsg['content'] = raw;
-          mm.add(outMsg);
-        }
-      }
+      final mm = await _buildOpenAIChatCompletionMessages(
+        messages,
+        userMediaPaths: userImagePaths,
+        canImageInput: canImageInput,
+      );
       body = {
         'model': upstreamModelId,
         'messages': mm,
@@ -1156,6 +1209,11 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
     body,
     config: config,
     modelId: modelId,
+    upstreamModelId: upstreamModelId,
+  );
+  _applyOpenRouterClaudePromptCaching(
+    body,
+    config: config,
     upstreamModelId: upstreamModelId,
   );
 
@@ -1315,7 +1373,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
           final callInfos = <ToolCallInfo>[];
           for (int i = 0; i < tcs.length; i++) {
             final t = (tcs[i] as Map).cast<String, dynamic>();
-            final id = (t['id'] ?? 'call_$i').toString();
+            final id = _effectiveToolCallId(t['id'], 'call', i);
             final f =
                 (t['function'] as Map?)?.cast<String, dynamic>() ??
                 const <String, dynamic>{};
@@ -1346,7 +1404,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
           final results = <Map<String, dynamic>>[];
           final resultsInfo = <ToolResultInfo>[];
           for (final c in callInfos) {
-            final res = await onToolCall(c.name, c.arguments);
+            final res = await onToolCall(c.name, c.arguments, toolCallId: c.id);
             results.add({'tool_call_id': c.id, 'content': res});
             resultsInfo.add(
               ToolResultInfo(
@@ -1412,7 +1470,11 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                   next,
                   userMediaPaths: userImagePaths,
                 )
-              : next;
+              : await _buildOpenAIChatCompletionMessages(
+                  next,
+                  userMediaPaths: userImagePaths,
+                  canImageInput: canImageInput,
+                );
           reqBody.remove('stream');
           req.body = jsonEncode(reqBody);
           final resp2 = await client.send(req);
@@ -1518,7 +1580,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
           final callInfos = <ToolCallInfo>[];
           final toolMsgs = <Map<String, dynamic>>[];
           toolAcc.forEach((idx, m) {
-            final id = (m['id'] ?? 'call_$idx');
+            final id = _effectiveToolCallId(m['id'], 'call', idx);
             final name = (m['name'] ?? '');
             Map<String, dynamic> args;
             try {
@@ -1556,7 +1618,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
             final name = m['__name'] as String;
             final id = m['__id'] as String;
             final args = (m['__args'] as Map<String, dynamic>);
-            final res = await onToolCall(name, args);
+            final res = await onToolCall(name, args, toolCallId: id);
             results.add({'tool_call_id': id, 'content': res});
             resultsInfo.add(
               ToolResultInfo(id: id, name: name, arguments: args, content: res),
@@ -1625,7 +1687,11 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                   }
                 : {
                     'model': upstreamModelId,
-                    'messages': currentMessages,
+                    'messages': await _buildOpenAIChatCompletionMessages(
+                      currentMessages,
+                      userMediaPaths: userImagePaths,
+                      canImageInput: canImageInput,
+                    ),
                     'stream': true,
                     if (temperature != null) 'temperature': temperature,
                     if (topP != null) 'top_p': topP,
@@ -1980,7 +2046,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
               final callInfos2 = <ToolCallInfo>[];
               final toolMsgs2 = <Map<String, dynamic>>[];
               toolAcc2.forEach((idx, m) {
-                final id = (m['id'] ?? 'call_$idx');
+                final id = _effectiveToolCallId(m['id'], 'call', idx);
                 final name = (m['name'] ?? '');
                 Map<String, dynamic> args;
                 try {
@@ -2014,7 +2080,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                 final name = m['__name'] as String;
                 final id = m['__id'] as String;
                 final args = (m['__args'] as Map<String, dynamic>);
-                final res = await onToolCall(name, args);
+                final res = await onToolCall(name, args, toolCallId: id);
                 results2.add({'tool_call_id': id, 'content': res});
                 resultsInfo2.add(
                   ToolResultInfo(
@@ -2279,18 +2345,11 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                   } catch (_) {
                     args = <String, dynamic>{};
                   }
+                  final id = _effectiveToolCallId(callId, 'call', idx);
                   callInfos.add(
-                    ToolCallInfo(
-                      id: callId.isNotEmpty ? callId : 'call_$idx',
-                      name: name,
-                      arguments: args,
-                    ),
+                    ToolCallInfo(id: id, name: name, arguments: args),
                   );
-                  msgs.add({
-                    '__id': callId.isNotEmpty ? callId : 'call_$idx',
-                    '__name': name,
-                    '__args': args,
-                  });
+                  msgs.add({'__id': id, '__name': name, '__args': args});
                 }
               } else {
                 int idx = 0;
@@ -2302,7 +2361,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                   } catch (_) {
                     args = <String, dynamic>{};
                   }
-                  final id2 = key.isNotEmpty ? key : 'call_$idx';
+                  final id2 = _effectiveToolCallId(key, 'call', idx);
                   callInfos.add(
                     ToolCallInfo(
                       id: id2,
@@ -2330,13 +2389,17 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                   toolCalls: callInfos,
                 );
               }
+              final responseOutputItems = _withResponsesFunctionCallItems(
+                lastResponseOutputItems,
+                callInfos,
+              );
               final resultsInfo = <ToolResultInfo>[];
               final followUpOutputs = <Map<String, dynamic>>[];
               for (final m in msgs) {
                 final nm = m['__name'] as String;
                 final id2 = m['__id'] as String;
                 final args = (m['__args'] as Map<String, dynamic>);
-                final res = await onToolCall(nm, args);
+                final res = await onToolCall(nm, args, toolCallId: id2);
                 resultsInfo.add(
                   ToolResultInfo(
                     id: id2,
@@ -2365,8 +2428,8 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
               List<Map<String, dynamic>> currentInput = <Map<String, dynamic>>[
                 ...responsesInitialInput,
               ];
-              if (lastResponseOutputItems.isNotEmpty) {
-                currentInput.addAll(lastResponseOutputItems);
+              if (responseOutputItems.isNotEmpty) {
+                currentInput.addAll(responseOutputItems);
               }
               currentInput.addAll(followUpOutputs);
 
@@ -2598,18 +2661,11 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                   } catch (_) {
                     args2 = <String, dynamic>{};
                   }
+                  final id2 = _effectiveToolCallId(callId2, 'call', idx2);
                   callInfos2.add(
-                    ToolCallInfo(
-                      id: callId2.isNotEmpty ? callId2 : 'call_$idx2',
-                      name: name2,
-                      arguments: args2,
-                    ),
+                    ToolCallInfo(id: id2, name: name2, arguments: args2),
                   );
-                  msgs2.add({
-                    '__id': callId2.isNotEmpty ? callId2 : 'call_$idx2',
-                    '__name': name2,
-                    '__args': args2,
-                  });
+                  msgs2.add({'__id': id2, '__name': name2, '__args': args2});
                 }
                 if (callInfos2.isNotEmpty) {
                   final approxTotal =
@@ -2623,13 +2679,17 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                     toolCalls: callInfos2,
                   );
                 }
+                final responseOutputItems2 = _withResponsesFunctionCallItems(
+                  outItems2,
+                  callInfos2,
+                );
                 final resultsInfo2 = <ToolResultInfo>[];
                 final followUpOutputs2 = <Map<String, dynamic>>[];
                 for (final m in msgs2) {
                   final nm = m['__name'] as String;
                   final id2 = m['__id'] as String;
                   final args2 = (m['__args'] as Map<String, dynamic>);
-                  final res2 = await onToolCall(nm, args2);
+                  final res2 = await onToolCall(nm, args2, toolCallId: id2);
                   resultsInfo2.add(
                     ToolResultInfo(
                       id: id2,
@@ -2654,7 +2714,9 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                   );
                 }
                 // Extend current input with this round's model output and our outputs
-                if (outItems2.isNotEmpty) currentInput.addAll(outItems2);
+                if (responseOutputItems2.isNotEmpty) {
+                  currentInput.addAll(responseOutputItems2);
+                }
                 currentInput.addAll(followUpOutputs2);
               }
 
@@ -2893,7 +2955,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
               final entry = toolAcc.putIfAbsent(
                 idx,
                 () => {
-                  'id': id.isEmpty ? 'call_$idx' : id,
+                  'id': _effectiveToolCallId(id, 'call', idx),
                   'name': name,
                   'args': argsStr,
                 },
@@ -2944,7 +3006,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
           final callInfos = <ToolCallInfo>[];
           final toolMsgs = <Map<String, dynamic>>[];
           toolAcc.forEach((idx, m) {
-            final id = (m['id'] ?? 'call_$idx');
+            final id = _effectiveToolCallId(m['id'], 'call', idx);
             final name = (m['name'] ?? '');
             Map<String, dynamic> args;
             try {
@@ -2980,7 +3042,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
             final name = m['__name'] as String;
             final id = m['__id'] as String;
             final args = (m['__args'] as Map<String, dynamic>);
-            final res = await onToolCall(name, args);
+            final res = await onToolCall(name, args, toolCallId: id);
             results.add({'tool_call_id': id, 'content': res});
             resultsInfo.add(
               ToolResultInfo(id: id, name: name, arguments: args, content: res),
@@ -3047,7 +3109,11 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                   }
                 : {
                     'model': upstreamModelId,
-                    'messages': currentMessages,
+                    'messages': await _buildOpenAIChatCompletionMessages(
+                      currentMessages,
+                      userMediaPaths: userImagePaths,
+                      canImageInput: canImageInput,
+                    ),
                     'stream': true,
                     if (temperature != null) 'temperature': temperature,
                     if (topP != null) 'top_p': topP,
@@ -3394,7 +3460,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                       final entry = toolAcc2.putIfAbsent(
                         idx,
                         () => {
-                          'id': id.isEmpty ? 'call_$idx' : id,
+                          'id': _effectiveToolCallId(id, 'call', idx),
                           'name': name,
                           'args': argsStr,
                         },
@@ -3415,7 +3481,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
               final callInfos2 = <ToolCallInfo>[];
               final toolMsgs2 = <Map<String, dynamic>>[];
               toolAcc2.forEach((idx, m) {
-                final id = (m['id'] ?? 'call_$idx');
+                final id = _effectiveToolCallId(m['id'], 'call', idx);
                 final name = (m['name'] ?? '');
                 Map<String, dynamic> args;
                 try {
@@ -3449,7 +3515,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                 final name = m['__name'] as String;
                 final id = m['__id'] as String;
                 final args = (m['__args'] as Map<String, dynamic>);
-                final res = await onToolCall(name, args);
+                final res = await onToolCall(name, args, toolCallId: id);
                 results2.add({'tool_call_id': id, 'content': res});
                 resultsInfo2.add(
                   ToolResultInfo(
@@ -3522,7 +3588,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
               final callInfos = <ToolCallInfo>[];
               final toolMsgs = <Map<String, dynamic>>[];
               toolAcc.forEach((idx, m) {
-                final id = (m['id'] ?? 'call_$idx');
+                final id = _effectiveToolCallId(m['id'], 'call', idx);
                 final name = (m['name'] ?? '');
                 Map<String, dynamic> args;
                 try {
@@ -3560,7 +3626,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                 final name = m['__name'] as String;
                 final id = m['__id'] as String;
                 final args = (m['__args'] as Map<String, dynamic>);
-                final res = await onToolCall(name, args);
+                final res = await onToolCall(name, args, toolCallId: id);
                 results.add({'tool_call_id': id, 'content': res});
                 resultsInfo.add(
                   ToolResultInfo(
@@ -3632,7 +3698,11 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                       }
                     : {
                         'model': upstreamModelId,
-                        'messages': currentMessages,
+                        'messages': await _buildOpenAIChatCompletionMessages(
+                          currentMessages,
+                          userMediaPaths: userImagePaths,
+                          canImageInput: canImageInput,
+                        ),
                         'stream': true,
                         if (temperature != null) 'temperature': temperature,
                         if (topP != null) 'top_p': topP,
@@ -3948,7 +4018,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                           final entry = toolAcc2.putIfAbsent(
                             idx,
                             () => {
-                              'id': id.isEmpty ? 'call_$idx' : id,
+                              'id': _effectiveToolCallId(id, 'call', idx),
                               'name': name,
                               'args': argsStr,
                             },
@@ -3970,7 +4040,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                   final callInfos2 = <ToolCallInfo>[];
                   final toolMsgs2 = <Map<String, dynamic>>[];
                   toolAcc2.forEach((idx, m) {
-                    final id = (m['id'] ?? 'call_$idx');
+                    final id = _effectiveToolCallId(m['id'], 'call', idx);
                     final name = (m['name'] ?? '');
                     Map<String, dynamic> args;
                     try {
@@ -4004,7 +4074,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                     final name = m['__name'] as String;
                     final id = m['__id'] as String;
                     final args = (m['__args'] as Map<String, dynamic>);
-                    final res = await onToolCall(name, args);
+                    final res = await onToolCall(name, args, toolCallId: id);
                     results2.add({'tool_call_id': id, 'content': res});
                     resultsInfo2.add(
                       ToolResultInfo(

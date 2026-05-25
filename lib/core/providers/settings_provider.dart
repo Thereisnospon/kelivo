@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:collection';
 import 'dart:io';
 import 'package:socks5_proxy/socks_client.dart' as socks;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,6 +27,15 @@ enum DesktopTopicPosition { left, right }
 
 // Desktop: send message shortcut
 enum DesktopSendShortcut { enter, ctrlEnter }
+
+// Desktop: message navigation buttons visibility mode
+enum DesktopMessageNavButtonsMode {
+  always,
+  scroll,
+  hover,
+  scrollAndHover,
+  never,
+}
 
 enum _MigrationResult { noChange, applied, failed }
 
@@ -79,6 +89,10 @@ class SettingsProvider extends ChangeNotifier {
   static const String _ocrPromptKey = 'ocr_prompt_v1';
   static const String _summaryModelKey = 'summary_model_v1';
   static const String _summaryPromptKey = 'summary_prompt_v1';
+  static const String _suggestionModelKey = 'suggestion_model_v1';
+  static const String _suggestionPromptKey = 'suggestion_prompt_v1';
+  static const String _suggestionInsertOnTapOnlyKey =
+      'suggestion_insert_on_tap_only_v1';
   static const String _compressModelKey = 'compress_model_v1';
   static const String _compressPromptKey = 'compress_prompt_v1';
   static const String _themePaletteKey = 'theme_palette_v1';
@@ -105,7 +119,13 @@ class SettingsProvider extends ChangeNotifier {
       'display_collapse_thinking_steps_v1';
   static const String _displayShowToolResultSummaryKey =
       'display_show_tool_result_summary_v1';
+  static const String _displayRegenerateDeleteTrailingMessagesKey =
+      'display_regenerate_delete_trailing_messages_v1';
+  static const String _displayShowRegenerateConfirmDialogKey =
+      'display_show_regenerate_confirm_dialog_v1';
   static const String _displayShowMessageNavKey = 'display_show_message_nav_v1';
+  static const String _displayDesktopMessageNavButtonsModeKey =
+      'display_desktop_message_nav_buttons_mode_v1';
   static const String _displayUseNewAssistantAvatarUxKey =
       'display_use_new_assistant_avatar_ux_v1';
   static const String _displayShowProviderInModelCapsuleKey =
@@ -159,6 +179,7 @@ class SettingsProvider extends ChangeNotifier {
       'display_enable_assistant_markdown_v1';
   static const String _displayShowChatListDateKey =
       'display_show_chat_list_date_v1';
+  static const String _imageCropperEnabledKey = 'image_cropper_enabled_v1';
   static const String _displayMobileCodeBlockWrapKey =
       'display_mobile_code_block_wrap_v1';
   static const String _displayAutoCollapseCodeBlockKey =
@@ -175,6 +196,12 @@ class SettingsProvider extends ChangeNotifier {
       'display_use_pure_background_v1';
   static const String _displayChatMessageBackgroundStyleKey =
       'display_chat_message_background_style_v1';
+  static const String _mobileAssistantEditTabOrderKey =
+      'mobile_assistant_edit_tab_order_v1';
+  static const String _mobileAssistantEditTabHiddenKey =
+      'mobile_assistant_edit_tab_hidden_v1';
+  static const String _mobileAssistantDetailOutlineEnabledKey =
+      'mobile_assistant_detail_outline_enabled_v1';
   // Network request logging (debug)
   static const String _requestLogEnabledKey = 'request_log_enabled_v1';
   // Flutter runtime logging (debug)
@@ -183,6 +210,7 @@ class SettingsProvider extends ChangeNotifier {
   static const String _logSaveOutputKey = 'log_save_output_v1';
   static const String _logAutoDeleteDaysKey = 'log_auto_delete_days_v1';
   static const String _logMaxSizeMBKey = 'log_max_size_mb_v1';
+  static const String _appLaunchCountKey = 'app_launch_count_v1';
   // Desktop topic panel placement + right sidebar open state
   static const String _desktopTopicPositionKey = 'desktop_topic_position_v1';
   static const String _desktopRightSidebarOpenKey =
@@ -402,6 +430,9 @@ class SettingsProvider extends ChangeNotifier {
   String get globalProxyUsername => _globalProxyUsername;
   String get globalProxyPassword => _globalProxyPassword;
   String get globalProxyBypass => _globalProxyBypass;
+
+  int _appLaunchCount = 0;
+  int get appLaunchCount => _appLaunchCount;
 
   SettingsProvider() {
     _load();
@@ -711,6 +742,22 @@ class SettingsProvider extends ChangeNotifier {
     _summaryPrompt = (summaryp == null || summaryp.trim().isEmpty)
         ? defaultSummaryPrompt
         : summaryp;
+    // load chat suggestion model
+    final suggestionSel = prefs.getString(_suggestionModelKey);
+    if (suggestionSel != null && suggestionSel.contains('::')) {
+      final parts = suggestionSel.split('::');
+      if (parts.length >= 2) {
+        _suggestionModelProvider = parts[0];
+        _suggestionModelId = parts.sublist(1).join('::');
+      }
+    }
+    // load chat suggestion prompt
+    final suggestionp = prefs.getString(_suggestionPromptKey);
+    _suggestionPrompt = (suggestionp == null || suggestionp.trim().isEmpty)
+        ? defaultSuggestionPrompt
+        : suggestionp;
+    _insertSuggestionOnTapOnly =
+        prefs.getBool(_suggestionInsertOnTapOnlyKey) ?? false;
     // load compress model
     final compressSel = prefs.getString(_compressModelKey);
     if (compressSel != null && compressSel.contains('::')) {
@@ -760,7 +807,15 @@ class SettingsProvider extends ChangeNotifier {
         prefs.getBool(_displayCollapseThinkingStepsKey) ?? false;
     _showToolResultSummary =
         prefs.getBool(_displayShowToolResultSummaryKey) ?? false;
+    _regenerateDeleteTrailingMessages =
+        prefs.getBool(_displayRegenerateDeleteTrailingMessagesKey) ?? false;
+    _showRegenerateConfirmDialog =
+        prefs.getBool(_displayShowRegenerateConfirmDialogKey) ?? true;
     _showMessageNavButtons = prefs.getBool(_displayShowMessageNavKey) ?? true;
+    _desktopMessageNavButtonsMode = _parseDesktopMessageNavButtonsMode(
+      prefs.getString(_displayDesktopMessageNavButtonsModeKey),
+      legacyEnabled: _showMessageNavButtons,
+    );
     _useNewAssistantAvatarUx =
         prefs.getBool(_displayUseNewAssistantAvatarUxKey) ?? false;
     _showProviderInModelCapsule =
@@ -793,6 +848,7 @@ class SettingsProvider extends ChangeNotifier {
     RequestLogger.saveOutput = _logSaveOutput;
     _logAutoDeleteDays = prefs.getInt(_logAutoDeleteDaysKey) ?? 0;
     _logMaxSizeMB = prefs.getInt(_logMaxSizeMBKey) ?? 0;
+    _appLaunchCount = prefs.getInt(_appLaunchCountKey) ?? 0;
     // Run log cleanup based on current settings
     RequestLogger.cleanupLogs(
       autoDeleteDays: _logAutoDeleteDays,
@@ -845,6 +901,7 @@ class SettingsProvider extends ChangeNotifier {
     _enableAssistantMarkdown =
         prefs.getBool(_displayEnableAssistantMarkdownKey) ?? true;
     _showChatListDate = prefs.getBool(_displayShowChatListDateKey) ?? false;
+    _imageCropperEnabled = prefs.getBool(_imageCropperEnabledKey) ?? false;
     _mobileCodeBlockWrap =
         prefs.getBool(_displayMobileCodeBlockWrapKey) ?? false;
     _autoCollapseCodeBlock =
@@ -910,6 +967,14 @@ class SettingsProvider extends ChangeNotifier {
       default:
         _chatMessageBackgroundStyle = ChatMessageBackgroundStyle.defaultStyle;
     }
+    _mobileAssistantEditTabOrder = List.unmodifiable(
+      prefs.getStringList(_mobileAssistantEditTabOrderKey) ?? const <String>[],
+    );
+    _hiddenMobileAssistantEditTabs = Set.unmodifiable(
+      prefs.getStringList(_mobileAssistantEditTabHiddenKey) ?? const <String>[],
+    );
+    _mobileAssistantDetailOutlineEnabled =
+        prefs.getBool(_mobileAssistantDetailOutlineEnabledKey) ?? false;
     // desktop UI
     _desktopSidebarWidth = prefs.getDouble(_desktopSidebarWidthKey) ?? 300;
     _desktopSidebarOpen = prefs.getBool(_desktopSidebarOpenKey) ?? true;
@@ -1935,6 +2000,41 @@ class SettingsProvider extends ChangeNotifier {
     await prefs.setString(_displayChatMessageBackgroundStyleKey, v);
   }
 
+  List<String> _mobileAssistantEditTabOrder = const <String>[];
+  List<String> get mobileAssistantEditTabOrder => _mobileAssistantEditTabOrder;
+  Future<void> setMobileAssistantEditTabOrder(List<String> order) async {
+    final next = List<String>.unmodifiable(LinkedHashSet<String>.from(order));
+    if (listEquals(_mobileAssistantEditTabOrder, next)) return;
+    _mobileAssistantEditTabOrder = next;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_mobileAssistantEditTabOrderKey, next);
+  }
+
+  Set<String> _hiddenMobileAssistantEditTabs = const <String>{};
+  Set<String> get hiddenMobileAssistantEditTabs =>
+      _hiddenMobileAssistantEditTabs;
+  Future<void> setHiddenMobileAssistantEditTabs(Set<String> hidden) async {
+    final sorted = hidden.toList()..sort();
+    final next = Set<String>.unmodifiable(sorted);
+    if (setEquals(_hiddenMobileAssistantEditTabs, next)) return;
+    _hiddenMobileAssistantEditTabs = next;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_mobileAssistantEditTabHiddenKey, sorted);
+  }
+
+  bool _mobileAssistantDetailOutlineEnabled = false;
+  bool get mobileAssistantDetailOutlineEnabled =>
+      _mobileAssistantDetailOutlineEnabled;
+  Future<void> setMobileAssistantDetailOutlineEnabled(bool enabled) async {
+    if (_mobileAssistantDetailOutlineEnabled == enabled) return;
+    _mobileAssistantDetailOutlineEnabled = enabled;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_mobileAssistantDetailOutlineEnabledKey, enabled);
+  }
+
   // ===== Android background chat generation =====
   AndroidBackgroundChatMode _androidBackgroundChatMode =
       AndroidBackgroundChatMode.off;
@@ -2124,6 +2224,12 @@ class SettingsProvider extends ChangeNotifier {
       await prefs.remove(_summaryModelKey);
       changed = true;
     }
+    if (_suggestionModelProvider == providerKey) {
+      _suggestionModelProvider = null;
+      _suggestionModelId = null;
+      await prefs.remove(_suggestionModelKey);
+      changed = true;
+    }
     if (_compressModelProvider == providerKey) {
       _compressModelProvider = null;
       _compressModelId = null;
@@ -2172,6 +2278,13 @@ class SettingsProvider extends ChangeNotifier {
       _summaryModelProvider = null;
       _summaryModelId = null;
       await prefs.remove(_summaryModelKey);
+      changed = true;
+    }
+    if (_suggestionModelProvider == providerKey &&
+        _suggestionModelId == modelId) {
+      _suggestionModelProvider = null;
+      _suggestionModelId = null;
+      await prefs.remove(_suggestionModelKey);
       changed = true;
     }
     if (_compressModelProvider == providerKey && _compressModelId == modelId) {
@@ -2227,6 +2340,11 @@ class SettingsProvider extends ChangeNotifier {
       _summaryModelProvider = null;
       _summaryModelId = null;
       await prefs.remove(_summaryModelKey);
+    }
+    if (_suggestionModelProvider == key) {
+      _suggestionModelProvider = null;
+      _suggestionModelId = null;
+      await prefs.remove(_suggestionModelKey);
     }
     if (_compressModelProvider == key) {
       _compressModelProvider = null;
@@ -2532,6 +2650,73 @@ Generate or update a brief summary of the user's questions and intentions.
   Future<void> resetSummaryPrompt() async =>
       setSummaryPrompt(defaultSummaryPrompt);
 
+  // Chat suggestion model and prompt. Null model means the feature is disabled.
+  String? _suggestionModelProvider;
+  String? _suggestionModelId;
+  String? get suggestionModelProvider => _suggestionModelProvider;
+  String? get suggestionModelId => _suggestionModelId;
+  String? get suggestionModelKey =>
+      (_suggestionModelProvider != null && _suggestionModelId != null)
+      ? '${_suggestionModelProvider!}::${_suggestionModelId!}'
+      : null;
+
+  static const String defaultSuggestionPrompt =
+      '''I will provide you with some chat content in the `<content>` block, including conversations between the User and the AI assistant.
+You need to act as the User to continue the conversation, generating 3 appropriate and contextually relevant responses or questions to the assistant.
+
+Rules:
+1. Reply directly with suggestions, do not add any formatting, and separate suggestions with newlines.
+2. Use {locale} language.
+3. Ensure each suggestion is valid and useful for continuing the conversation.
+4. Each suggestion should be concise.
+5. Imitate the user's previous conversational style.
+6. Act as a User, not an Assistant.
+
+<content>
+{content}
+</content>''';
+
+  String _suggestionPrompt = defaultSuggestionPrompt;
+  String get suggestionPrompt => _suggestionPrompt;
+  bool _insertSuggestionOnTapOnly = false;
+  bool get insertSuggestionOnTapOnly => _insertSuggestionOnTapOnly;
+
+  Future<void> setSuggestionModel(String providerKey, String modelId) async {
+    _suggestionModelProvider = providerKey;
+    _suggestionModelId = modelId;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_suggestionModelKey, '$providerKey::$modelId');
+  }
+
+  Future<void> resetSuggestionModel() async {
+    _suggestionModelProvider = null;
+    _suggestionModelId = null;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_suggestionModelKey);
+  }
+
+  Future<void> setSuggestionPrompt(String prompt) async {
+    _suggestionPrompt = prompt.trim().isEmpty
+        ? defaultSuggestionPrompt
+        : prompt;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_suggestionPromptKey, _suggestionPrompt);
+  }
+
+  Future<void> resetSuggestionPrompt() async =>
+      setSuggestionPrompt(defaultSuggestionPrompt);
+
+  Future<void> setInsertSuggestionOnTapOnly(bool value) async {
+    if (_insertSuggestionOnTapOnly == value) return;
+    _insertSuggestionOnTapOnly = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_suggestionInsertOnTapOnlyKey, value);
+  }
+
   // Compress model and prompt
   String? _compressModelProvider;
   String? _compressModelId;
@@ -2809,6 +2994,27 @@ DO NOT GIVE ANSWERS OR DO HOMEWORK FOR THE USER. If the user asks a math or logi
     await prefs.setBool(_displayShowToolResultSummaryKey, v);
   }
 
+  bool _regenerateDeleteTrailingMessages = false;
+  bool get regenerateDeleteTrailingMessages =>
+      _regenerateDeleteTrailingMessages;
+  Future<void> setRegenerateDeleteTrailingMessages(bool v) async {
+    if (_regenerateDeleteTrailingMessages == v) return;
+    _regenerateDeleteTrailingMessages = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_displayRegenerateDeleteTrailingMessagesKey, v);
+  }
+
+  bool _showRegenerateConfirmDialog = true;
+  bool get showRegenerateConfirmDialog => _showRegenerateConfirmDialog;
+  Future<void> setShowRegenerateConfirmDialog(bool v) async {
+    if (_showRegenerateConfirmDialog == v) return;
+    _showRegenerateConfirmDialog = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_displayShowRegenerateConfirmDialogKey, v);
+  }
+
   // Display: show message navigation button
   bool _showMessageNavButtons = true;
   bool get showMessageNavButtons => _showMessageNavButtons;
@@ -2907,6 +3113,64 @@ DO NOT GIVE ANSWERS OR DO HOMEWORK FOR THE USER. If the user asks a math or logi
     final prefs = await SharedPreferences.getInstance();
     final str = v == DesktopSendShortcut.ctrlEnter ? 'ctrlEnter' : 'enter';
     await prefs.setString(_desktopSendShortcutKey, str);
+  }
+
+  // Desktop: message navigation buttons visibility mode
+  DesktopMessageNavButtonsMode _desktopMessageNavButtonsMode =
+      DesktopMessageNavButtonsMode.scroll;
+  DesktopMessageNavButtonsMode get desktopMessageNavButtonsMode =>
+      _desktopMessageNavButtonsMode;
+
+  Future<void> setDesktopMessageNavButtonsMode(
+    DesktopMessageNavButtonsMode mode,
+  ) async {
+    if (_desktopMessageNavButtonsMode == mode) return;
+    _desktopMessageNavButtonsMode = mode;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _displayDesktopMessageNavButtonsModeKey,
+      _desktopMessageNavButtonsModeToString(mode),
+    );
+  }
+
+  DesktopMessageNavButtonsMode _parseDesktopMessageNavButtonsMode(
+    String? raw, {
+    required bool legacyEnabled,
+  }) {
+    switch (raw) {
+      case 'always':
+        return DesktopMessageNavButtonsMode.always;
+      case 'scroll':
+        return DesktopMessageNavButtonsMode.scroll;
+      case 'hover':
+        return DesktopMessageNavButtonsMode.hover;
+      case 'scrollAndHover':
+        return DesktopMessageNavButtonsMode.scrollAndHover;
+      case 'never':
+        return DesktopMessageNavButtonsMode.never;
+      default:
+        return legacyEnabled
+            ? DesktopMessageNavButtonsMode.scroll
+            : DesktopMessageNavButtonsMode.never;
+    }
+  }
+
+  String _desktopMessageNavButtonsModeToString(
+    DesktopMessageNavButtonsMode mode,
+  ) {
+    switch (mode) {
+      case DesktopMessageNavButtonsMode.always:
+        return 'always';
+      case DesktopMessageNavButtonsMode.scroll:
+        return 'scroll';
+      case DesktopMessageNavButtonsMode.hover:
+        return 'hover';
+      case DesktopMessageNavButtonsMode.scrollAndHover:
+        return 'scrollAndHover';
+      case DesktopMessageNavButtonsMode.never:
+        return 'never';
+    }
   }
 
   // Display: chat font scale (0.5 - 1.5, default 1.0)
@@ -3026,6 +3290,17 @@ DO NOT GIVE ANSWERS OR DO HOMEWORK FOR THE USER. If the user asks a math or logi
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_displayShowChatListDateKey, v);
+  }
+
+  // Display: crop images after selecting from gallery or camera
+  bool _imageCropperEnabled = false;
+  bool get imageCropperEnabled => _imageCropperEnabled;
+  Future<void> setImageCropperEnabled(bool v) async {
+    if (_imageCropperEnabled == v) return;
+    _imageCropperEnabled = v;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_imageCropperEnabledKey, v);
   }
 
   // Display: mobile code block word wrap
@@ -3243,6 +3518,14 @@ DO NOT GIVE ANSWERS OR DO HOMEWORK FOR THE USER. If the user asks a math or logi
     await FlutterLogger.setEnabled(v);
   }
 
+  Future<void> incrementAppLaunchCount() async {
+    final prefs = await SharedPreferences.getInstance();
+    final next = (prefs.getInt(_appLaunchCountKey) ?? _appLaunchCount) + 1;
+    _appLaunchCount = next;
+    await prefs.setInt(_appLaunchCountKey, next);
+    notifyListeners();
+  }
+
   // Log settings: save output
   bool _logSaveOutput = true;
   bool get logSaveOutput => _logSaveOutput;
@@ -3371,6 +3654,16 @@ DO NOT GIVE ANSWERS OR DO HOMEWORK FOR THE USER. If the user asks a math or logi
     copy._titleModelProvider = _titleModelProvider;
     copy._titleModelId = _titleModelId;
     copy._titlePrompt = _titlePrompt;
+    copy._summaryModelProvider = _summaryModelProvider;
+    copy._summaryModelId = _summaryModelId;
+    copy._summaryPrompt = _summaryPrompt;
+    copy._suggestionModelProvider = _suggestionModelProvider;
+    copy._suggestionModelId = _suggestionModelId;
+    copy._suggestionPrompt = _suggestionPrompt;
+    copy._insertSuggestionOnTapOnly = _insertSuggestionOnTapOnly;
+    copy._compressModelProvider = _compressModelProvider;
+    copy._compressModelId = _compressModelId;
+    copy._compressPrompt = _compressPrompt;
     copy._translateModelProvider = _translateModelProvider;
     copy._translateModelId = _translateModelId;
     copy._translatePrompt = _translatePrompt;
@@ -3393,6 +3686,8 @@ DO NOT GIVE ANSWERS OR DO HOMEWORK FOR THE USER. If the user asks a math or logi
     copy._autoCollapseThinking = _autoCollapseThinking;
     copy._collapseThinkingSteps = _collapseThinkingSteps;
     copy._showToolResultSummary = _showToolResultSummary;
+    copy._regenerateDeleteTrailingMessages = _regenerateDeleteTrailingMessages;
+    copy._showRegenerateConfirmDialog = _showRegenerateConfirmDialog;
     copy._showMessageNavButtons = _showMessageNavButtons;
     copy._useNewAssistantAvatarUx = _useNewAssistantAvatarUx;
     copy._showProviderInModelCapsule = _showProviderInModelCapsule;
@@ -3413,9 +3708,12 @@ DO NOT GIVE ANSWERS OR DO HOMEWORK FOR THE USER. If the user asks a math or logi
     copy._logSaveOutput = _logSaveOutput;
     copy._logAutoDeleteDays = _logAutoDeleteDays;
     copy._logMaxSizeMB = _logMaxSizeMB;
+    copy._appLaunchCount = _appLaunchCount;
     copy._newChatOnLaunch = _newChatOnLaunch;
     copy._newChatOnAssistantSwitch = _newChatOnAssistantSwitch;
     copy._newChatAfterDelete = _newChatAfterDelete;
+    copy._desktopSendShortcut = _desktopSendShortcut;
+    copy._desktopMessageNavButtonsMode = _desktopMessageNavButtonsMode;
     copy._chatFontScale = _chatFontScale;
     copy._autoScrollEnabled = _autoScrollEnabled;
     copy._autoScrollIdleSeconds = _autoScrollIdleSeconds;
@@ -3432,6 +3730,10 @@ DO NOT GIVE ANSWERS OR DO HOMEWORK FOR THE USER. If the user asks a math or logi
     copy._desktopMinimizeToTrayOnClose = _desktopMinimizeToTrayOnClose;
     copy._usePureBackground = _usePureBackground;
     copy._chatMessageBackgroundStyle = _chatMessageBackgroundStyle;
+    copy._mobileAssistantEditTabOrder = _mobileAssistantEditTabOrder;
+    copy._hiddenMobileAssistantEditTabs = _hiddenMobileAssistantEditTabs;
+    copy._mobileAssistantDetailOutlineEnabled =
+        _mobileAssistantDetailOutlineEnabled;
     return copy;
   }
 }
@@ -3686,6 +3988,12 @@ class ProviderConfig {
   final KeyManagementConfig? keyManagement;
   // AIhubmix promo header opt-in
   final bool? aihubmixAppCodeEnabled;
+  // OpenAI-compatible provider account balance query.
+  final bool? balanceEnabled;
+  final String? balanceApiPath;
+  final String? balanceResultPath;
+  // Anthropic/OpenRouter Claude prompt caching for stable system prompts.
+  final bool? claudePromptCachingEnabled;
 
   static String resolveProxyType(String? value) {
     switch (value?.trim().toLowerCase()) {
@@ -3724,6 +4032,10 @@ class ProviderConfig {
     this.apiKeys,
     this.keyManagement,
     this.aihubmixAppCodeEnabled,
+    this.balanceEnabled,
+    this.balanceApiPath,
+    this.balanceResultPath,
+    this.claudePromptCachingEnabled = false,
   });
 
   // Sentinel for copyWith nullability control (allow explicit null set)
@@ -3756,6 +4068,10 @@ class ProviderConfig {
     List<ApiKeyConfig>? apiKeys,
     KeyManagementConfig? keyManagement,
     bool? aihubmixAppCodeEnabled,
+    bool? balanceEnabled,
+    String? balanceApiPath,
+    String? balanceResultPath,
+    bool? claudePromptCachingEnabled,
   }) => ProviderConfig(
     id: id ?? this.id,
     enabled: enabled ?? this.enabled,
@@ -3788,6 +4104,11 @@ class ProviderConfig {
     keyManagement: keyManagement ?? this.keyManagement,
     aihubmixAppCodeEnabled:
         aihubmixAppCodeEnabled ?? this.aihubmixAppCodeEnabled,
+    balanceEnabled: balanceEnabled ?? this.balanceEnabled,
+    balanceApiPath: balanceApiPath ?? this.balanceApiPath,
+    balanceResultPath: balanceResultPath ?? this.balanceResultPath,
+    claudePromptCachingEnabled:
+        claudePromptCachingEnabled ?? this.claudePromptCachingEnabled,
   );
 
   Map<String, dynamic> toJson() => {
@@ -3817,6 +4138,10 @@ class ProviderConfig {
     'apiKeys': apiKeys?.map((e) => e.toJson()).toList(),
     'keyManagement': keyManagement?.toJson(),
     'aihubmixAppCodeEnabled': aihubmixAppCodeEnabled,
+    'balanceEnabled': balanceEnabled,
+    'balanceApiPath': balanceApiPath,
+    'balanceResultPath': balanceResultPath,
+    'claudePromptCachingEnabled': claudePromptCachingEnabled,
   };
 
   factory ProviderConfig.fromJson(Map<String, dynamic> json) => ProviderConfig(
@@ -3862,6 +4187,11 @@ class ProviderConfig {
       (json['keyManagement'] as Map?)?.cast<String, dynamic>(),
     ),
     aihubmixAppCodeEnabled: json['aihubmixAppCodeEnabled'] as bool?,
+    balanceEnabled: json['balanceEnabled'] as bool?,
+    balanceApiPath: json['balanceApiPath'] as String?,
+    balanceResultPath: json['balanceResultPath'] as String?,
+    claudePromptCachingEnabled:
+        json['claudePromptCachingEnabled'] as bool? ?? false,
   );
 
   static ProviderKind classify(String key, {ProviderKind? explicitType}) {
@@ -3890,6 +4220,9 @@ class ProviderConfig {
     }
     if (RegExp(r'bytedance|doubao|volces|ark').hasMatch(k)) {
       return 'https://ark.cn-beijing.volces.com/api/v3';
+    }
+    if (RegExp(r'kimi|moonshot|月之暗面').hasMatch(k)) {
+      return 'https://api.moonshot.cn/v1';
     }
     if (k.contains('silicon')) return 'https://api.siliconflow.cn/v1';
     if (k.contains('grok') || k.contains('x.ai') || k.contains('xai')) {
@@ -3946,6 +4279,10 @@ class ProviderConfig {
           apiKeys: const [],
           keyManagement: const KeyManagementConfig(),
           aihubmixAppCodeEnabled: false,
+          balanceEnabled: false,
+          balanceApiPath: '/credits',
+          balanceResultPath: 'data.total_usage',
+          claudePromptCachingEnabled: false,
         );
       case ProviderKind.claude:
         return ProviderConfig(
@@ -3966,6 +4303,10 @@ class ProviderConfig {
           apiKeys: const [],
           keyManagement: const KeyManagementConfig(),
           aihubmixAppCodeEnabled: false,
+          balanceEnabled: false,
+          balanceApiPath: '/credits',
+          balanceResultPath: 'data.total_usage',
+          claudePromptCachingEnabled: false,
         );
       case ProviderKind.openai:
         // Special-case KelivoIN default models and overrides
@@ -4014,6 +4355,10 @@ class ProviderConfig {
             apiKeys: const [],
             keyManagement: const KeyManagementConfig(),
             aihubmixAppCodeEnabled: false,
+            balanceEnabled: _defaultBalanceEnabled(key),
+            balanceApiPath: _defaultBalanceApiPath(key),
+            balanceResultPath: _defaultBalanceResultPath(key),
+            claudePromptCachingEnabled: false,
           );
         }
         // Special-case SiliconFlow: prefill two partnered models
@@ -4051,6 +4396,10 @@ class ProviderConfig {
             apiKeys: const [],
             keyManagement: const KeyManagementConfig(),
             aihubmixAppCodeEnabled: false,
+            balanceEnabled: _defaultBalanceEnabled(key),
+            balanceApiPath: _defaultBalanceApiPath(key),
+            balanceResultPath: _defaultBalanceResultPath(key),
+            claudePromptCachingEnabled: false,
           );
         }
         return ProviderConfig(
@@ -4073,7 +4422,49 @@ class ProviderConfig {
           apiKeys: const [],
           keyManagement: const KeyManagementConfig(),
           aihubmixAppCodeEnabled: lowerKey.contains('aihubmix'),
+          balanceEnabled: _defaultBalanceEnabled(key),
+          balanceApiPath: _defaultBalanceApiPath(key),
+          balanceResultPath: _defaultBalanceResultPath(key),
+          claudePromptCachingEnabled: false,
         );
     }
+  }
+
+  static String _defaultBalanceApiPath(String key) {
+    final k = key.toLowerCase();
+    if (k.contains('aihubmix')) return '/user/balance';
+    if (k.contains('deepseek')) return '/user/balance';
+    if (k.contains('openrouter')) return '/credits';
+    if (k.contains('vercel')) return '/credits';
+    if (k.contains('silicon')) return '/user/info';
+    if (RegExp(r'kimi|moonshot|月之暗面').hasMatch(k)) {
+      return '/users/me/balance';
+    }
+    return '/credits';
+  }
+
+  static String _defaultBalanceResultPath(String key) {
+    final k = key.toLowerCase();
+    if (k.contains('aihubmix')) return 'balance_infos[0].total_balance';
+    if (k.contains('deepseek')) return 'balance_infos[0].total_balance';
+    if (k.contains('openrouter')) {
+      return 'data.total_credits - data.total_usage';
+    }
+    if (k.contains('vercel')) return 'balance';
+    if (k.contains('silicon')) return 'data.totalBalance';
+    if (RegExp(r'kimi|moonshot|月之暗面').hasMatch(k)) {
+      return 'data.available_balance';
+    }
+    return 'data.total_usage';
+  }
+
+  static bool _defaultBalanceEnabled(String key) {
+    final k = key.toLowerCase();
+    return k.contains('aihubmix') ||
+        k.contains('deepseek') ||
+        k.contains('openrouter') ||
+        k.contains('vercel') ||
+        k.contains('silicon') ||
+        RegExp(r'kimi|moonshot|月之暗面').hasMatch(k);
   }
 }
